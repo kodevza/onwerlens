@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.playwright-cli/
+output/
+data/*snapshot.json
+.tmp
+src.zip

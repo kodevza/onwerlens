@@ -1,0 +1,651 @@
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+import { Input } from "../../components/ui/input";
+import { TableHead } from "../../components/ui/table";
+import { hasSearchExpression, matchesSearchExpression } from "../searchFilterUtils";
+
+export type SortDirection = "asc" | "desc";
+
+export type SortRule = {
+  columnId: string;
+  direction: SortDirection;
+};
+
+export type ReportTableColumn<TRow> = {
+  id: string;
+  label: string;
+  className?: string;
+  filter?: "auto" | "text" | "multiselect";
+  help?: ReportTableColumnHelp;
+  getValue: (row: TRow) => unknown;
+  render: (row: TRow) => ReactNode;
+};
+
+export type ReportTableColumnHelp = {
+  source: string;
+  field?: string;
+  logic?: string[];
+};
+
+type ColumnFilter =
+  | {
+      type: "text";
+      value: string;
+    }
+  | {
+      type: "values";
+      values: string[];
+    };
+
+type ColumnFilters = Record<string, ColumnFilter>;
+type ColumnFilterOptions = Record<string, string[]>;
+
+const maxMultiselectOptions = 5;
+const tooltipWidth = 320;
+const tooltipGap = 8;
+const dropdownGap = 4;
+const dropdownEstimatedHeight = 272;
+const viewportMargin = 16;
+
+const collator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base"
+});
+
+export function useReportTableControls<TRow>(rows: TRow[], columns: ReportTableColumn<TRow>[]) {
+  const [filters, setFilters] = useState<ColumnFilters>({});
+  const [sortRules, setSortRules] = useState<SortRule[]>([]);
+  const [openFilterColumnId, setOpenFilterColumnId] = useState<string | null>(null);
+
+  const { controlledRows, filterOptions } = useMemo(
+    () => applyReportTableControls(rows, columns, filters, sortRules),
+    [columns, filters, rows, sortRules]
+  );
+
+  function setColumnFilter(columnId: string, value: string) {
+    setFilters((current) => {
+      const next = { ...current };
+
+      if (value.trim().length === 0) {
+        delete next[columnId];
+      } else {
+        next[columnId] = { type: "text", value };
+      }
+
+      return next;
+    });
+  }
+
+  function setColumnValuesFilter(columnId: string, values: string[]) {
+    setFilters((current) => applyColumnValuesFilter(current, columnId, values));
+  }
+
+  function toggleColumnValueFilter(columnId: string, value: string, checked: boolean) {
+    setFilters((current) => applyColumnFilterValueToggle(current, columnId, value, checked));
+  }
+
+  function setColumnFilterOpen(columnId: string, isOpen: boolean) {
+    setOpenFilterColumnId((currentColumnId) => applyColumnFilterOpen(currentColumnId, columnId, isOpen));
+  }
+
+  function toggleColumnSort(columnId: string) {
+    setSortRules((current) => {
+      const existingRule = current.find((rule) => rule.columnId === columnId);
+
+      if (!existingRule) {
+        return [...current, { columnId, direction: "asc" }];
+      }
+
+      if (existingRule.direction === "asc") {
+        return current.map((rule) => (rule.columnId === columnId ? { ...rule, direction: "desc" } : rule));
+      }
+
+      return current.filter((rule) => rule.columnId !== columnId);
+    });
+  }
+
+  return {
+    controlledRows,
+    filterOptions,
+    filters,
+    openFilterColumnId,
+    setColumnFilter,
+    setColumnFilterOpen,
+    setColumnValuesFilter,
+    sortRules,
+    toggleColumnValueFilter,
+    toggleColumnSort
+  };
+}
+
+export function applyReportTableControls<TRow>(
+  rows: TRow[],
+  columns: ReportTableColumn<TRow>[],
+  filters: ColumnFilters,
+  sortRules: SortRule[] = []
+) {
+  const filterOptions = buildFilterOptions(rows, columns);
+  const activeFilters = columns
+    .map((column) => ({
+      column,
+      filter: filters[column.id]
+    }))
+    .filter(({ filter }) => isActiveFilter(filter));
+
+  const columnById = new Map(columns.map((column) => [column.id, column]));
+  const filteredRows =
+    activeFilters.length === 0
+      ? rows
+      : rows.filter((row) =>
+          activeFilters.every(({ column, filter }) => {
+            const value = formatCellValue(column.getValue(row));
+
+            if (filter?.type === "values") {
+              return filter.values.includes(value);
+            }
+
+            return matchesSearchExpression(value, filter?.value ?? "");
+          })
+        );
+
+  logReportTableFilterDebug(rows, filteredRows, activeFilters, columns, filters);
+
+  if (sortRules.length === 0) {
+    return {
+      controlledRows: filteredRows,
+      filterOptions
+    };
+  }
+
+  return {
+    controlledRows: filteredRows
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => {
+        for (const rule of sortRules) {
+          const column = columnById.get(rule.columnId);
+          if (!column) {
+            continue;
+          }
+
+          const result = compareValues(column.getValue(left.row), column.getValue(right.row));
+          if (result !== 0) {
+            return rule.direction === "asc" ? result : -result;
+          }
+        }
+
+        return left.index - right.index;
+      })
+      .map(({ row }) => row),
+    filterOptions
+  };
+}
+
+export function applyColumnValuesFilter(
+  currentFilters: ColumnFilters,
+  columnId: string,
+  values: string[]
+): ColumnFilters {
+  const next = { ...currentFilters };
+
+  if (values.length === 0) {
+    delete next[columnId];
+  } else {
+    next[columnId] = { type: "values", values };
+  }
+
+  return next;
+}
+
+export function applyColumnFilterValueToggle(
+  currentFilters: ColumnFilters,
+  columnId: string,
+  value: string,
+  checked: boolean
+): ColumnFilters {
+  const currentFilter = currentFilters[columnId];
+  const selectedValues = currentFilter?.type === "values" ? currentFilter.values : [];
+
+  return applyColumnValuesFilter(currentFilters, columnId, applyColumnValueToggle(selectedValues, value, checked));
+}
+
+export function applyColumnFilterOpen(
+  currentColumnId: string | null,
+  columnId: string,
+  isOpen: boolean
+): string | null {
+  if (isOpen) {
+    return columnId;
+  }
+
+  return currentColumnId === columnId ? null : currentColumnId;
+}
+
+export function applyColumnValueToggle(selectedValues: string[], value: string, checked: boolean): string[] {
+  if (checked) {
+    return selectedValues.includes(value) ? selectedValues : [...selectedValues, value];
+  }
+
+  return selectedValues.filter((selectedValue) => selectedValue !== value);
+}
+
+export function ReportTableHead<TRow>({
+  columns,
+  filters,
+  filterOptions,
+  openFilterColumnId,
+  sortRules,
+  onFilterChange,
+  onFilterOpenChange,
+  onValueFilterToggle,
+  onValuesFilterChange,
+  onSortToggle
+}: {
+  columns: ReportTableColumn<TRow>[];
+  filters: ColumnFilters;
+  filterOptions: ColumnFilterOptions;
+  openFilterColumnId: string | null;
+  sortRules: SortRule[];
+  onFilterChange: (columnId: string, value: string) => void;
+  onFilterOpenChange: (columnId: string, isOpen: boolean) => void;
+  onValueFilterToggle: (columnId: string, value: string, checked: boolean) => void;
+  onValuesFilterChange: (columnId: string, values: string[]) => void;
+  onSortToggle: (columnId: string) => void;
+}) {
+  return (
+    <>
+      {columns.map((column) => {
+        const sortIndex = sortRules.findIndex((rule) => rule.columnId === column.id);
+        const sortRule = sortIndex >= 0 ? sortRules[sortIndex] : null;
+        const sortMark = sortRule ? (sortRule.direction === "asc" ? "↑" : "↓") : "↕";
+        const options = filterOptions[column.id] ?? [];
+        const filter = filters[column.id];
+        const shouldUseMultiselect =
+          column.filter === "multiselect" ||
+          (column.filter !== "text" && options.length > 0 && options.length <= maxMultiselectOptions);
+
+        return (
+          <TableHead key={column.id} className={column.className}>
+            <div className="flex min-w-[150px] flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  aria-label={`Sort by ${column.label}`}
+                  className="inline-flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-sm border-0 bg-transparent p-0 text-left text-xs font-semibold text-foreground"
+                  type="button"
+                  onClick={() => onSortToggle(column.id)}
+                >
+                  <span className="truncate">{column.label}</span>
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                    {sortRule ? <span>{sortIndex + 1}</span> : null}
+                    <span aria-hidden="true">{sortMark}</span>
+                  </span>
+                </button>
+                {column.help ? <ColumnInfo label={column.label} help={column.help} /> : null}
+              </div>
+              {shouldUseMultiselect ? (
+                <ColumnValueFilter
+                  column={column}
+                  filter={filter}
+                  isOpen={openFilterColumnId === column.id}
+                  options={options}
+                  onClear={onValuesFilterChange}
+                  onOpenChange={onFilterOpenChange}
+                  onValueToggle={onValueFilterToggle}
+                />
+              ) : (
+                <Input
+                  aria-label={`Filter ${column.label}`}
+                  className="h-8 min-w-0 bg-card px-2 py-1 text-xs shadow-none"
+                  placeholder="Filter with RegExp"
+                  value={filter?.type === "text" ? filter.value : ""}
+                  onChange={(event) => onFilterChange(column.id, event.target.value)}
+                />
+              )}
+            </div>
+          </TableHead>
+        );
+      })}
+    </>
+  );
+}
+
+function ColumnInfo({ label, help }: { label: string; help: ReportTableColumnHelp }) {
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
+
+  function showTooltip() {
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+
+    const rect = trigger.getBoundingClientRect();
+    const maxLeft = window.innerWidth - tooltipWidth - viewportMargin;
+    const preferredLeft = rect.right - tooltipWidth;
+    const left = Math.max(viewportMargin, Math.min(preferredLeft, maxLeft));
+    const preferredTop = rect.bottom + tooltipGap;
+    const top =
+      preferredTop + tooltipGap > window.innerHeight
+        ? Math.max(viewportMargin, rect.top - tooltipGap)
+        : preferredTop;
+
+    setTooltipPosition({ left, top });
+  }
+
+  function hideTooltip() {
+    setTooltipPosition(null);
+  }
+
+  return (
+    <span className="inline-flex shrink-0" onBlur={hideTooltip} onFocus={showTooltip} onMouseEnter={showTooltip} onMouseLeave={hideTooltip}>
+      <span
+        ref={triggerRef}
+        aria-label={`${label} column information`}
+        className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-input bg-card text-[10px] font-semibold leading-none text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        role="button"
+        tabIndex={0}
+      >
+        i
+      </span>
+      {tooltipPosition
+        ? createPortal(
+            <ColumnInfoTooltip help={help} label={label} left={tooltipPosition.left} top={tooltipPosition.top} />,
+            document.body
+          )
+        : null}
+    </span>
+  );
+}
+
+function ColumnInfoTooltip({
+  label,
+  help,
+  left,
+  top
+}: {
+  label: string;
+  help: ReportTableColumnHelp;
+  left: number;
+  top: number;
+}) {
+  const logic = help.logic ?? [];
+
+  return (
+    <span
+      className="pointer-events-none fixed z-[100] block w-80 max-w-[calc(100vw-2rem)] whitespace-normal rounded-md border border-border bg-card p-3 text-left text-xs font-normal leading-5 text-foreground shadow-lg"
+      role="tooltip"
+      style={{ left, top }}
+    >
+      <span className="mb-2 block font-semibold text-foreground">{label}</span>
+      <span className="block">
+        <span className="font-semibold text-muted-foreground">Source: </span>
+        {help.source}
+      </span>
+      {help.field ? (
+        <span className="block">
+          <span className="font-semibold text-muted-foreground">Attribute: </span>
+          <code className="rounded bg-muted px-1 py-0.5 text-[11px]">{help.field}</code>
+        </span>
+      ) : null}
+      <span className="mt-2 block font-semibold text-muted-foreground">Logic:</span>
+      <ul className="m-0 mt-1 list-disc space-y-1 pl-4">
+        {logic.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+    </span>
+  );
+}
+
+function ColumnValueFilter<TRow>({
+  column,
+  filter,
+  isOpen,
+  options,
+  onClear,
+  onOpenChange,
+  onValueToggle
+}: {
+  column: ReportTableColumn<TRow>;
+  filter: ColumnFilter | undefined;
+  isOpen: boolean;
+  options: string[];
+  onClear: (columnId: string, values: string[]) => void;
+  onOpenChange: (columnId: string, isOpen: boolean) => void;
+  onValueToggle: (columnId: string, value: string, checked: boolean) => void;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    left: number;
+    top: number;
+    minWidth: number;
+    maxWidth: number;
+  } | null>(null);
+  const selectedValues = filter?.type === "values" ? filter.values : [];
+  const label =
+    selectedValues.length === 0
+      ? "All"
+      : selectedValues.length === 1
+        ? selectedValues[0]
+        : `${selectedValues.length} selected`;
+
+  function toggleValue(value: string, checked: boolean) {
+    onValueToggle(column.id, value, checked);
+  }
+
+  function updateMenuPosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const rect = trigger.getBoundingClientRect();
+    const maxWidth = window.innerWidth - viewportMargin * 2;
+    const minWidth = Math.min(Math.max(rect.width, 160), maxWidth);
+    const preferredLeft = rect.left;
+    const maxLeft = window.innerWidth - minWidth - viewportMargin;
+    const left = Math.max(viewportMargin, Math.min(preferredLeft, maxLeft));
+    const preferredTop = rect.bottom + dropdownGap;
+    const top =
+      preferredTop + dropdownEstimatedHeight > window.innerHeight && rect.top > dropdownEstimatedHeight
+        ? Math.max(viewportMargin, rect.top - dropdownGap - dropdownEstimatedHeight)
+        : preferredTop;
+
+    setMenuPosition({ left, top, minWidth, maxWidth });
+  }
+
+  useEffect(() => {
+    if (!isOpen) {
+      setMenuPosition(null);
+      return;
+    }
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        aria-label={`Filter ${column.label}`}
+        className="flex h-8 cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-input bg-card px-2 py-1 text-xs font-normal text-foreground shadow-sm marker:hidden"
+        type="button"
+        onClick={() => onOpenChange(column.id, !isOpen)}
+      >
+        <span className="truncate">{label}</span>
+        <span aria-hidden="true" className="text-muted-foreground">
+          ▾
+        </span>
+      </button>
+      {isOpen && menuPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed z-[100] rounded-md border border-border bg-card p-2 text-xs text-foreground shadow-lg"
+              style={{
+                left: menuPosition.left,
+                top: menuPosition.top,
+                minWidth: menuPosition.minWidth,
+                maxWidth: menuPosition.maxWidth
+              }}
+            >
+              <button
+                className="mb-1 w-full cursor-pointer rounded-sm border-0 bg-transparent px-2 py-1 text-left text-xs text-muted-foreground hover:bg-muted"
+                type="button"
+                onClick={() => onClear(column.id, [])}
+              >
+                Clear
+              </button>
+              <div className="flex max-h-52 flex-col gap-1 overflow-auto">
+                {options.map((option) => (
+                  <label key={option} className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 hover:bg-muted">
+                    <input
+                      checked={selectedValues.includes(option)}
+                      className="h-3.5 w-3.5"
+                      type="checkbox"
+                      onChange={(event) => toggleValue(option, event.target.checked)}
+                    />
+                    <span className="break-words">{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
+
+function buildFilterOptions<TRow>(rows: TRow[], columns: ReportTableColumn<TRow>[]): ColumnFilterOptions {
+  return Object.fromEntries(
+    columns.map((column) => {
+      const values = new Set<string>();
+
+      for (const row of rows) {
+        const value = formatCellValue(column.getValue(row));
+
+        if (value.length > 0) {
+          values.add(value);
+        }
+
+        if (column.filter !== "multiselect" && values.size > maxMultiselectOptions) {
+          break;
+        }
+      }
+
+      return [column.id, [...values].sort((left, right) => collator.compare(left, right))];
+    })
+  );
+}
+
+function isActiveFilter(filter: ColumnFilter | undefined): boolean {
+  if (!filter) {
+    return false;
+  }
+
+  if (filter.type === "values") {
+    return filter.values.length > 0;
+  }
+
+  return hasSearchExpression(filter.value);
+}
+
+function compareValues(left: unknown, right: unknown): number {
+  const leftText = formatCellValue(left);
+  const rightText = formatCellValue(right);
+
+  if (!leftText && !rightText) {
+    return 0;
+  }
+
+  if (!leftText) {
+    return 1;
+  }
+
+  if (!rightText) {
+    return -1;
+  }
+
+  return collator.compare(leftText, rightText);
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(formatCellValue).filter(Boolean).join(", ");
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  return String(value);
+}
+
+function logReportTableFilterDebug<TRow>(
+  rows: TRow[],
+  filteredRows: TRow[],
+  activeFilters: {
+    column: ReportTableColumn<TRow>;
+    filter: ColumnFilter | undefined;
+  }[],
+  columns: ReportTableColumn<TRow>[],
+  filters: ColumnFilters
+): void {
+  if (!isReportTableFilterDebugEnabled()) {
+    return;
+  }
+
+  const activeColumnIds = new Set(activeFilters.map(({ column }) => column.id));
+  const debugColumns = columns.filter((column) => activeColumnIds.has(column.id));
+  const filteredRowSet = new Set(filteredRows);
+
+  console.groupCollapsed(
+    `[OwnerLens table filters] ${filteredRows.length}/${rows.length} rows after ${activeFilters.length} filters`
+  );
+  console.log("filters", filters);
+  console.log(
+    "activeFilters",
+    activeFilters.map(({ column, filter }) => ({
+      columnId: column.id,
+      label: column.label,
+      filter
+    }))
+  );
+  console.table(
+    rows.map((row) => {
+      const rowRecord = row as Record<string, unknown>;
+      const debugRow: Record<string, unknown> = {
+        included: filteredRowSet.has(row),
+        id: rowRecord.id,
+        displayName: rowRecord.displayName,
+        appId: rowRecord.appId
+      };
+
+      for (const column of debugColumns) {
+        debugRow[column.id] = formatCellValue(column.getValue(row));
+      }
+
+      return debugRow;
+    })
+  );
+  console.groupEnd();
+}
+
+function isReportTableFilterDebugEnabled(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.localStorage.getItem("ownerLensDebugTableFilters") === "1"
+  );
+}
