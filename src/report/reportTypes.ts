@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 export type ReportColumnHelp = {
   source: string;
   field?: string;
@@ -22,17 +20,13 @@ export type ReportDetailsValue = {
   searchText?: string;
 };
 
-export type ReportFilterDescriptor<TRow> =
+export type ReportFilterDescriptor =
   | {
       kind: "text";
-      getValue?: (row: TRow) => unknown;
-      predicate?: (row: TRow, query: string) => boolean;
     }
   | {
       kind: "multiSelect";
       options?: string[];
-      getValue?: (row: TRow) => unknown;
-      predicate?: (row: TRow, selectedValues: string[]) => boolean;
     };
 
 export type ReportFieldDescriptor<TRow> = {
@@ -41,10 +35,9 @@ export type ReportFieldDescriptor<TRow> = {
   help?: ReportColumnHelp;
   valueType: ReportValueType;
   getValue: (row: TRow) => unknown;
-  render?: (value: unknown, row: TRow) => ReactNode;
   searchable?: boolean;
   sortable?: boolean;
-  filter?: ReportFilterDescriptor<TRow>;
+  filter?: ReportFilterDescriptor;
 };
 
 export type ReportExportDescriptor<TRow> = {
@@ -70,7 +63,7 @@ export type ReportCollectionDescriptor<TContext, TRow = unknown> = {
   getRows: (ctx: TContext) => TRow[];
   getRowKey: (row: TRow) => string;
   fields: ReportFieldDescriptor<TRow>[] | ((ctx: TContext) => ReportFieldDescriptor<TRow>[]);
-  filters?: ReportFilterDescriptor<TRow>[];
+  filters?: ReportFilterDescriptor[];
   export?: ReportExportDescriptor<TRow>;
 };
 
@@ -82,7 +75,7 @@ export type ErasedReportCollectionDescriptor<TContext> = {
   getRows: (ctx: TContext) => unknown[];
   getRowKey: (row: unknown) => string;
   fields: (ctx: TContext) => ReportFieldDescriptor<unknown>[];
-  filters?: ReportFilterDescriptor<unknown>[];
+  filters?: ReportFilterDescriptor[];
   export?: ReportExportDescriptor<unknown>;
 };
 
@@ -124,7 +117,7 @@ export function defineReportCollection<TContext, TRow>(
     getRowKey: (row) => definition.getRowKey(row as TRow),
     fields: (ctx) =>
       (typeof definition.fields === "function" ? definition.fields(ctx) : definition.fields) as ReportFieldDescriptor<unknown>[],
-    filters: definition.filters as ReportFilterDescriptor<unknown>[] | undefined,
+    filters: definition.filters as ReportFilterDescriptor[] | undefined,
     export: definition.export as ReportExportDescriptor<unknown> | undefined
   };
 }

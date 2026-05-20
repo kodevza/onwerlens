@@ -1,4 +1,3 @@
-import type { OwnerColumnHelp } from "./components/GenericOwnerTable";
 import type { OwnerOverviewProps } from "./components/OwnerOverview";
 import type { OwnerReport } from "./types";
 import type { ReportCollectionUiDescriptor, ReportProvider } from "./reportTypes";
@@ -25,6 +24,5 @@ export type ReportProviderModule<TContext, TResourceSnapshot, TIdentitySnapshot>
   }) => TContext;
   buildOverview: (ctx: TContext) => ProviderOverview;
   collectionTabs: ReportCollectionUiDescriptor[];
-  ownerColumnHelp: OwnerColumnHelp;
   providers: ReportProvider<TContext>[];
 };

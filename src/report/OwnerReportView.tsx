@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { applyCollectionFilters } from "./applyCollectionFilters";
 import { buildCollectionColumns } from "./buildCollectionColumns";
-import { GenericOwnerTable, type OwnerColumnHelp } from "./components/GenericOwnerTable";
 import { GenericTable } from "./components/GenericTable";
 import { OwnerOverview } from "./components/OwnerOverview";
 import { ReportDataSelection } from "./components/ReportDataSelection";
@@ -10,15 +9,7 @@ import type { ReportCollectionTab } from "./components/ReportDataSelection";
 import { ReportInputs, type ReportInputsProps } from "./components/ReportInputs";
 import type { ReportTableColumn } from "./components/reportTableControls";
 import { downloadReportArtifact } from "./export/downloadReportArtifact";
-import {
-  applyOwnerManualPrecheck,
-  buildOwnerManualPrecheckExportArtifact,
-  disableOwnerCandidate,
-  enableOwnerCandidate,
-  getOwnerEvidenceKey,
-  type DisabledOwnerKey
-} from "./ownerManualPrecheck";
-import { filterOwners } from "./reportViewUtils";
+import { applyOwnerManualPrecheck, buildOwnerManualPrecheckExportArtifact } from "./ownerManualPrecheck";
 import type {
   ErasedReportCollectionDescriptor,
   ReportCollectionUiDescriptor,
@@ -27,17 +18,15 @@ import type {
   ReportProvider
 } from "./reportTypes";
 import type { ProviderOverview } from "./reportProviderModule";
-import type { OwnerReport, OwnerReportRow } from "./types";
+import type { OwnerReport } from "./types";
 
 type OwnerReportViewProps<TContext> = {
   baseReport: OwnerReport;
   buildOverview: (ctx: TContext) => ProviderOverview;
   buildProviderContext: (input: { query: string; report: OwnerReport }) => TContext;
   collectionTabs: ReportCollectionUiDescriptor[];
-  ownerColumnHelp: OwnerColumnHelp;
   providers: ReportProvider<TContext>[];
   reportInputs: ReportInputsProps;
-  resetKey: string;
 };
 
 export function OwnerReportView<TContext>({
@@ -45,23 +34,16 @@ export function OwnerReportView<TContext>({
   buildOverview,
   buildProviderContext,
   collectionTabs,
-  ownerColumnHelp,
   providers,
-  reportInputs,
-  resetKey
+  reportInputs
 }: OwnerReportViewProps<TContext>) {
   const [activeTab, setActiveTab] = useState(collectionTabs[0]?.id ?? "owners");
   const [query, setQuery] = useState("");
-  const [disabledActivityOwnerKeys, setDisabledActivityOwnerKeys] = useState<Set<DisabledOwnerKey>>(() => new Set());
-  const report = useMemo(
-    () => applyOwnerManualPrecheck(baseReport, disabledActivityOwnerKeys),
-    [baseReport, disabledActivityOwnerKeys]
-  );
+  const report = useMemo(() => applyOwnerManualPrecheck(baseReport, new Set()), [baseReport]);
   const reportContext = useMemo(
     () => buildProviderContext({ query, report }),
     [buildProviderContext, query, report]
   );
-  const filteredOwners = useMemo(() => filterOwners(report.owners, query), [report.owners, query]);
   const overview = useMemo(() => buildOverview(reportContext), [buildOverview, reportContext]);
   const tables = useMemo(
     () =>
@@ -74,7 +56,7 @@ export function OwnerReportView<TContext>({
     () =>
       collectionTabs.map((collection) => ({
         ...collection,
-        count: getCollectionCount(collection.id, reportContext, report, providers),
+        count: getCollectionCount(collection.id, reportContext, providers),
         onExport: getCollectionExport(collection, {
           report,
           reportContext,
@@ -85,22 +67,6 @@ export function OwnerReportView<TContext>({
   );
   const unresolvedCount = report.owners.filter((row) => row.confidence === "none").length;
   const genericCollectionViews = useMemo(() => buildGenericCollectionViews(tables), [tables]);
-
-  useEffect(() => {
-    setDisabledActivityOwnerKeys(new Set());
-  }, [resetKey]);
-
-  function handleEvidenceDisabledChange(row: OwnerReportRow, evidenceIndex: number, disabled: boolean) {
-    const evidence = row.evidence[evidenceIndex];
-    if (!evidence) {
-      return;
-    }
-
-    const key = getOwnerEvidenceKey(row, evidence);
-    setDisabledActivityOwnerKeys((current) => {
-      return disabled ? disableOwnerCandidate(current, key) : enableOwnerCandidate(current, key);
-    });
-  }
 
   return (
     <>
@@ -122,18 +88,7 @@ export function OwnerReportView<TContext>({
         onTabChange={setActiveTab}
         query={query}
       >
-        {activeTab === "owners" ? (
-          <GenericOwnerTable
-            emptyMessage={getCollectionTab(collectionTabs, "owners").table.emptyMessage}
-            minWidthClassName={getCollectionTab(collectionTabs, "owners").table.minWidthClassName}
-            ownerColumnHelp={ownerColumnHelp}
-            rows={filteredOwners}
-            onEvidenceDisabledChange={handleEvidenceDisabledChange}
-          />
-        ) : null}
-        {activeTab !== "owners"
-          ? renderGenericCollectionTable(activeTab, genericCollectionViews, getCollectionTab(collectionTabs, activeTab))
-          : null}
+        {renderGenericCollectionTable(activeTab, genericCollectionViews, getCollectionTab(collectionTabs, activeTab))}
       </ReportDataSelection>
     </>
   );
@@ -190,13 +145,8 @@ function getCollectionTab(collectionTabs: ReportCollectionUiDescriptor[], id: st
 function getCollectionCount<TContext>(
   id: string,
   reportContext: TContext,
-  report: OwnerReport,
   providers: ReportProvider<TContext>[]
 ): number {
-  if (id === "owners") {
-    return report.owners.length;
-  }
-
   return (
     providers
       .flatMap((provider) => provider.collections)

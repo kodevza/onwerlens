@@ -20,6 +20,7 @@ import {
 } from "./azureReportRows";
 import { consentInventoryCollection } from "./consentInventoryCollection";
 import { managedIdentityCollection } from "./managedIdentityCollection";
+import { ownersCollection } from "./ownersCollection";
 import { servicePrincipalCollection } from "./servicePrincipalCollection";
 import type { AzureReportInput, AzureReportOverview } from "./azureReportTypes";
 
@@ -29,7 +30,7 @@ export type { AzureReportInput, AzureReportOverview } from "./azureReportTypes";
 
 export const azureReportProvider: ReportProvider<AzureReportInput> = {
   id: "azure",
-  collections: [managedIdentityCollection, servicePrincipalCollection, consentInventoryCollection],
+  collections: [ownersCollection, managedIdentityCollection, servicePrincipalCollection, consentInventoryCollection],
   buildExport: (ctx, collectionId, format) => buildAzureReportExport(ctx, collectionId, format)
 };
 

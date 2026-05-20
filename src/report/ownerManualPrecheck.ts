@@ -1,4 +1,4 @@
-import type { ReportCsvRow, ReportExportArtifact, ReportExportFormat } from "../core/report/types";
+import type { ReportCsvRow, ReportExportArtifact, ReportExportFormat } from "./reportTypes";
 import type { OwnerEvidence, OwnerReport, OwnerReportRow } from "./types";
 
 export type DisabledOwnerKey = string;

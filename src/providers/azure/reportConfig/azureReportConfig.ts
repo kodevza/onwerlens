@@ -1,4 +1,4 @@
-import type { ReportColumnHelp } from "../../../core/report/types";
+import type { ReportColumnHelp } from "../../../report/reportTypes";
 
 export const azureOwnerColumnHelp = {
   target: {

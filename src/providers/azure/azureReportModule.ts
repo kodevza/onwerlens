@@ -3,7 +3,6 @@ import type { EntraSnapshot } from "./domain/entra";
 import type { AzureSnapshot } from "./domain/resources";
 import { azureExportedCollections } from "./exportedCollections";
 import { buildAzureOwnershipReport } from "./ownership";
-import { azureOwnerColumnHelp } from "./reportConfig/azureReportConfig";
 import { azureReportProvider, buildAzureReportOverview, type AzureReportInput } from "./reporting/azureReportProvider";
 
 export const azureReportModule: ReportProviderModule<AzureReportInput, AzureSnapshot, EntraSnapshot> = {
@@ -23,6 +22,5 @@ export const azureReportModule: ReportProviderModule<AzureReportInput, AzureSnap
   }),
   buildOverview: buildAzureReportOverview,
   collectionTabs: azureExportedCollections,
-  ownerColumnHelp: azureOwnerColumnHelp,
   providers: [azureReportProvider]
 };

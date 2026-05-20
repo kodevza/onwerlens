@@ -1,10 +1,12 @@
 import { azureReportProvider, type AzureReportInput } from "./reporting/azureReportProvider.ts";
 import type { EntraServicePrincipal, EntraSnapshot } from "./domain/entra";
 import type { AzureSnapshot } from "./domain/resources";
+import type { OwnerReportRow } from "../../report/types";
 
 test("Azure report collections produce expected row counts and keys", () => {
   const ctx = reportInput();
 
+  expect(getCollectionRows(ctx, "owners").map((row) => row.targetKey)).toEqual(["subscription:sub-1"]);
   expect(getCollectionRows(ctx, "managedIdentities").map((row) => row.id)).toEqual(["mi-1"]);
   expect(getCollectionRows(ctx, "servicePrincipals").map((row) => row.id)).toEqual(["app-1", "graph-1"]);
   expect(getCollectionRows(ctx, "entraConsentInventory").map((row) => row.key)).toEqual([
@@ -12,6 +14,7 @@ test("Azure report collections produce expected row counts and keys", () => {
   ]);
 });
 
+function getCollectionRows(ctx: AzureReportInput, id: "owners"): OwnerReportRow[];
 function getCollectionRows(ctx: AzureReportInput, id: "managedIdentities" | "servicePrincipals"): EntraServicePrincipal[];
 function getCollectionRows(
   ctx: AzureReportInput,
@@ -31,7 +34,19 @@ function reportInput(): AzureReportInput {
     identitySnapshot: entraSnapshot(),
     query: "",
     report: {
-      owners: []
+      owners: [
+        {
+          kind: "subscription",
+          resourceGroup: null,
+          subscriptionId: "sub-1",
+          subscriptionName: "Test Subscription",
+          targetKey: "subscription:sub-1",
+          owner: "alice@example.com",
+          confidence: "high",
+          source: "tag",
+          evidence: [{ user: "alice@example.com", date: null }]
+        }
+      ]
     },
     resourceSnapshot: azureSnapshot()
   };

@@ -3,8 +3,9 @@ import { createPortal } from "react-dom";
 
 import { Input } from "./ui/input";
 import { TableHead } from "./ui/table";
-import type { ReportColumnHelp } from "../../core/report/types";
-import { hasSearchExpression, matchesSearchExpression } from "../../lib/searchFilterUtils";
+import { applyCollectionFilters, type ReportFilterValues } from "../applyCollectionFilters";
+import type { ReportColumnHelp, ReportFieldDescriptor } from "../reportTypes";
+import { hasSearchExpression } from "../../lib/searchFilterUtils";
 
 export type SortDirection = "asc" | "desc";
 
@@ -35,6 +36,10 @@ type ColumnFilter =
 
 type ColumnFilters = Record<string, ColumnFilter>;
 type ColumnFilterOptions = Record<string, string[]>;
+type ActiveColumnFilter<TRow> = {
+  column: ReportTableColumn<TRow>;
+  filter: ColumnFilter;
+};
 
 const maxMultiselectOptions = 5;
 const tooltipWidth = 320;
@@ -121,28 +126,11 @@ export function applyReportTableControls<TRow>(
   sortRules: SortRule[] = []
 ) {
   const filterOptions = buildFilterOptions(rows, columns);
-  const activeFilters = columns
-    .map((column) => ({
-      column,
-      filter: filters[column.id]
-    }))
-    .filter(({ filter }) => isActiveFilter(filter));
-
+  const activeFilters = buildActiveColumnFilters(columns, filters);
   const columnById = new Map(columns.map((column) => [column.id, column]));
-  const filteredRows =
-    activeFilters.length === 0
-      ? rows
-      : rows.filter((row) =>
-          activeFilters.every(({ column, filter }) => {
-            const value = formatCellValue(column.getValue(row));
-
-            if (filter?.type === "values") {
-              return filter.values.includes(value);
-            }
-
-            return matchesSearchExpression(value, filter?.value ?? "");
-          })
-        );
+  const filteredRows = applyCollectionFilters(rows, buildTableFilterFields(activeFilters), {
+    filters: buildTableFilterValues(activeFilters)
+  });
 
   logReportTableFilterDebug(rows, filteredRows, activeFilters, columns, filters);
 
@@ -538,6 +526,41 @@ function buildFilterOptions<TRow>(rows: TRow[], columns: ReportTableColumn<TRow>
 
       return [column.id, [...values].sort((left, right) => collator.compare(left, right))];
     })
+  );
+}
+
+function buildActiveColumnFilters<TRow>(
+  columns: ReportTableColumn<TRow>[],
+  filters: ColumnFilters
+): ActiveColumnFilter<TRow>[] {
+  return columns
+    .map((column) => ({
+      column,
+      filter: filters[column.id]
+    }))
+    .filter((entry): entry is ActiveColumnFilter<TRow> => isActiveFilter(entry.filter));
+}
+
+function buildTableFilterFields<TRow>(
+  activeFilters: ActiveColumnFilter<TRow>[]
+): ReportFieldDescriptor<TRow>[] {
+  return activeFilters.map(({ column, filter }) => ({
+    id: column.id,
+    label: column.label,
+    valueType: "text",
+    getValue: (row) => formatCellValue(column.getValue(row)),
+    filter: {
+      kind: filter.type === "values" ? "multiSelect" : "text"
+    }
+  }));
+}
+
+function buildTableFilterValues<TRow>(activeFilters: ActiveColumnFilter<TRow>[]): ReportFilterValues {
+  return Object.fromEntries(
+    activeFilters.map(({ column, filter }) => [
+      column.id,
+      filter.type === "values" ? filter.values : filter.value
+    ])
   );
 }
 

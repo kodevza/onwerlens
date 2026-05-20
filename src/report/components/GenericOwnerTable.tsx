@@ -6,7 +6,7 @@ import { isActivityOwnerRow } from "../ownerManualPrecheck";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { EvidenceList } from "./EvidenceList";
 import { GenericTable } from "./GenericTable";
-import type { ReportColumnHelp } from "../../core/report/types";
+import type { ReportColumnHelp } from "../reportTypes";
 import type { ReportTableColumn } from "./reportTableControls";
 
 export type OwnerColumnHelp = Record<

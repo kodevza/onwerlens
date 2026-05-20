@@ -2,6 +2,6 @@ import type { ReportFieldDescriptor, ReportFilterDescriptor } from "./reportType
 
 export function buildCollectionFilters<TRow>(
   fields: ReportFieldDescriptor<TRow>[]
-): ReportFilterDescriptor<TRow>[] {
+): ReportFilterDescriptor[] {
   return fields.flatMap((field) => (field.filter ? [field.filter] : []));
 }

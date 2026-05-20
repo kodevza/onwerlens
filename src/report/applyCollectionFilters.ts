@@ -30,21 +30,15 @@ export function applyCollectionFilters<TRow>(
         return true;
       }
 
+      const fieldValue = formatReportSearchValue(field.getValue(row));
+
       if (filter.kind === "multiSelect") {
         const selectedValues = Array.isArray(filterValue) ? filterValue : [String(filterValue)];
-        if (filter.predicate) {
-          return filter.predicate(row, selectedValues);
-        }
-
-        return selectedValues.includes(formatReportSearchValue((filter.getValue ?? field.getValue)(row)));
+        return selectedValues.includes(fieldValue);
       }
 
       const queryValue = Array.isArray(filterValue) ? filterValue.join(" ") : String(filterValue);
-      if (filter.predicate) {
-        return filter.predicate(row, queryValue);
-      }
-
-      return matchesSearchExpression(formatReportSearchValue((filter.getValue ?? field.getValue)(row)), queryValue);
+      return matchesSearchExpression(fieldValue, queryValue);
     })
   );
 }

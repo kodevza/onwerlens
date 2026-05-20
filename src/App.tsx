@@ -173,7 +173,6 @@ export default function App() {
           buildOverview={reportModule.buildOverview}
           buildProviderContext={reportContextFactory}
           collectionTabs={reportModule.collectionTabs}
-          ownerColumnHelp={reportModule.ownerColumnHelp}
           providers={reportModule.providers}
           reportInputs={{
             activityLogCount: resourceSnapshot.activityLogs.length,
@@ -185,7 +184,6 @@ export default function App() {
             servicePrincipalCount: identitySnapshot.servicePrincipals.length,
             subscriptionCount: resourceSnapshot.subscriptions.length
           }}
-          resetKey={`${resourceFile}:${identityFile}`}
         />
       ) : loadState.status === "loading" ? (
         <div className="empty-state">Loading report inputs...</div>
