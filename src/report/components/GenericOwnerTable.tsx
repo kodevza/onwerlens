@@ -9,7 +9,7 @@ import { GenericTable } from "./GenericTable";
 import type { ReportColumnHelp } from "../../core/report/types";
 import type { ReportTableColumn } from "./reportTableControls";
 
-type OwnerColumnHelp = Record<
+export type OwnerColumnHelp = Record<
   "target" | "subscription" | "owner" | "confidence" | "source" | "evidence",
   ReportColumnHelp
 >;

@@ -193,6 +193,26 @@ module.exports = {
           'npm-peer'
         ]
       }
+    },
+    {
+      name: 'providers-must-not-import-ui',
+      severity: 'error',
+      from: {
+        path: '^src/providers/'
+      },
+      to: {
+        path: '^src/components/|^src/ui/|[.]tsx$'
+      }
+    },
+    {
+      name: 'report-must-not-import-azure-directly',
+      severity: 'error',
+      from: {
+        path: '^src/report/'
+      },
+      to: {
+        path: '^src/providers/azure/'
+      }
     }
   ],
   options: {

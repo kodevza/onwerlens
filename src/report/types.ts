@@ -1,5 +1,17 @@
 export type { OwnerConfidence, OwnerEvidence, OwnerResolution } from "../core/ownership/types";
-export type { OwnerReport, OwnerReportRow } from "../providers/azure/ownership/azureOwnerReportTypes";
+import type { OwnerResolution } from "../core/ownership/types";
+
+export type OwnerReportRow = OwnerResolution & {
+  kind: "subscription" | "resourceGroup";
+  resourceGroup: string | null;
+  subscriptionId: string;
+  subscriptionName: string;
+  targetKey: string;
+};
+
+export type OwnerReport = {
+  owners: OwnerReportRow[];
+};
 
 export type SnapshotFile = {
   name: string;

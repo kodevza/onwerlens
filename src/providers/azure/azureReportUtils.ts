@@ -1,5 +1,4 @@
 import { getManagedIdentityPermissionRiskForServicePrincipal, type ManagedIdentityPermissionRiskIndex } from "./access-risk";
-import type { ManagedIdentityPermissionRiskSummary } from "./access-risk";
 import type { EntraServicePrincipal, EntraSnapshot } from "./domain/entra";
 import type { AzureSnapshot } from "./domain/resources";
 import type { EntraConsentInventoryRow } from "./entra-consent";
@@ -20,6 +19,7 @@ import {
   isManagedIdentity,
   isTenantOwned
 } from "./reportConfig/azureReportFormatters";
+import type { PermissionRiskLevel } from "../../core/risk/types";
 import { formatValue } from "../../lib/utils";
 import { hasSearchExpression, matchesSearchExpression } from "../../lib/searchFilterUtils";
 
@@ -30,7 +30,7 @@ export type ManagedIdentityExportRow = {
   resourceGroups: string;
   potentialOwners: string;
   managedIdentityAssignments: string;
-  permissionRisk: ManagedIdentityPermissionRiskSummary["riskLevel"];
+  permissionRisk: PermissionRiskLevel;
   azureRbac: string;
   enabled: string;
   objectId: string;
@@ -60,7 +60,7 @@ export type ServicePrincipalExportRow = {
   servicePrincipalOwners: string;
   potentialOwner: string;
   ownerConfidence: OwnerReportRow["confidence"];
-  permissionRisk: ManagedIdentityPermissionRiskSummary["riskLevel"];
+  permissionRisk: PermissionRiskLevel;
   azureRbac: string;
   type: string;
   enabled: string;
@@ -84,7 +84,7 @@ export type EntraConsentInventoryExportRow = {
   consentType: string;
   delegatedScopes: string;
   applicationPermissions: string;
-  risk: ManagedIdentityPermissionRiskSummary["riskLevel"];
+  risk: PermissionRiskLevel;
   reasons: string;
   appId: string;
   objectId: string;

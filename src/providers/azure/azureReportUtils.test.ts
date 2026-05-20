@@ -12,7 +12,8 @@ import {
 } from "./reportConfig/azureReportFormatters.ts";
 import type { EntraServicePrincipal, EntraSnapshot } from "./domain/entra";
 import type { AzureSnapshot } from "./domain/resources";
-import { buildAzureAccessRiskIndex, buildAzureManagedIdentityAssignmentIndex, buildRoleAssignmentIndex } from "./index.ts";
+import { buildAzureAccessRiskIndex } from "./access-risk";
+import { buildAzureManagedIdentityAssignmentIndex, buildRoleAssignmentIndex } from "./identities";
 import type { OwnerReportRow } from "./ownership/azureOwnerReportTypes.ts";
 import type { EntraConsentInventoryRow } from "./entra-consent";
 

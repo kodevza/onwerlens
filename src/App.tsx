@@ -1,24 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import type { EntraSnapshot } from "./providers/azure/domain/entra";
-import type { AzureSnapshot } from "./providers/azure/domain/resources";
+import { azureReportModule } from "./providers/azure";
 import { OwnerReportView } from "./report";
-import type { LoadState, SnapshotData, SnapshotFile } from "./report";
+import type { LoadState, OwnerReport, SnapshotData, SnapshotFile } from "./report";
 
 type SnapshotListResponse = {
   files: SnapshotFile[];
   error?: string;
 };
 
-const resourceSnapshotFileName = "snapshot.json";
-const entraSnapshotFileName = "entra-snapshot.json";
+const reportModule = azureReportModule;
+
+type ResourceSnapshot = Parameters<typeof reportModule.buildOwnershipReport>[0];
+type IdentitySnapshot = Parameters<typeof reportModule.buildOwnershipReport>[1];
 
 export default function App() {
   const [files, setFiles] = useState<SnapshotFile[]>([]);
   const [resourceFile, setResourceFile] = useState<string>("");
-  const [entraFile, setEntraFile] = useState<string>("");
-  const [resourceSnapshot, setResourceSnapshot] = useState<AzureSnapshot | null>(null);
-  const [entraSnapshot, setEntraSnapshot] = useState<EntraSnapshot | null>(null);
+  const [identityFile, setIdentityFile] = useState<string>("");
+  const [resourceSnapshot, setResourceSnapshot] = useState<ResourceSnapshot | null>(null);
+  const [identitySnapshot, setIdentitySnapshot] = useState<IdentitySnapshot | null>(null);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
@@ -33,14 +34,14 @@ export default function App() {
         const discoveredFiles = result.files;
         setFiles(discoveredFiles);
 
-        const nextResourceFile = findFile(discoveredFiles, resourceSnapshotFileName);
-        const nextEntraFile = findFile(discoveredFiles, entraSnapshotFileName);
+        const nextResourceFile = findFile(discoveredFiles, reportModule.snapshots.resourceFileName);
+        const nextIdentityFile = findFile(discoveredFiles, reportModule.snapshots.identityFileName);
         setResourceFile(nextResourceFile);
-        setEntraFile(nextEntraFile);
+        setIdentityFile(nextIdentityFile);
 
         const missingFiles = [
-          nextResourceFile ? null : `./data/${resourceSnapshotFileName}`,
-          nextEntraFile ? null : `./data/${entraSnapshotFileName}`
+          nextResourceFile ? null : `./data/${reportModule.snapshots.resourceFileName}`,
+          nextIdentityFile ? null : `./data/${reportModule.snapshots.identityFileName}`
         ].filter(Boolean);
 
         if (result.error || missingFiles.length > 0) {
@@ -66,9 +67,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!resourceFile || !entraFile) {
+    if (!resourceFile || !identityFile) {
       setResourceSnapshot(null);
-      setEntraSnapshot(null);
+      setIdentitySnapshot(null);
       return;
     }
 
@@ -76,19 +77,19 @@ export default function App() {
       setLoadState({ status: "loading" });
 
       try {
-        const [nextResourceSnapshot, nextEntraSnapshot] = await Promise.all([
+        const [nextResourceSnapshot, nextIdentitySnapshot] = await Promise.all([
           readSnapshot(resourceFile),
-          readSnapshot(entraFile)
+          readSnapshot(identityFile)
         ]);
 
-        assertProvider(nextResourceSnapshot, "azure");
-        assertProvider(nextEntraSnapshot, "entra");
-        setResourceSnapshot(nextResourceSnapshot as AzureSnapshot);
-        setEntraSnapshot(nextEntraSnapshot as EntraSnapshot);
+        assertProvider(nextResourceSnapshot, reportModule.snapshots.resourceProvider);
+        assertProvider(nextIdentitySnapshot, reportModule.snapshots.identityProvider);
+        setResourceSnapshot(nextResourceSnapshot as ResourceSnapshot);
+        setIdentitySnapshot(nextIdentitySnapshot as IdentitySnapshot);
         setLoadState({ status: "ready" });
       } catch (error) {
         setResourceSnapshot(null);
-        setEntraSnapshot(null);
+        setIdentitySnapshot(null);
         setLoadState({
           status: "error",
           message: error instanceof Error ? error.message : "Could not read report inputs."
@@ -97,10 +98,31 @@ export default function App() {
     }
 
     loadReportInputs();
-  }, [resourceFile, entraFile]);
+  }, [resourceFile, identityFile]);
 
   const selectedResourceFile = files.find((file) => file.name === resourceFile);
-  const selectedEntraFile = files.find((file) => file.name === entraFile);
+  const selectedIdentityFile = files.find((file) => file.name === identityFile);
+  const baseReport = useMemo(
+    () =>
+      resourceSnapshot && identitySnapshot ? reportModule.buildOwnershipReport(resourceSnapshot, identitySnapshot) : null,
+    [resourceSnapshot, identitySnapshot]
+  );
+  const reportContextFactory = useMemo(
+    () =>
+      ({ query, report }: { query: string; report: OwnerReport }) => {
+        if (!resourceSnapshot || !identitySnapshot) {
+          throw new Error("Report snapshots are not loaded.");
+        }
+
+        return reportModule.buildProviderContext({
+          identitySnapshot,
+          query,
+          report,
+          resourceSnapshot
+        });
+      },
+    [identitySnapshot, resourceSnapshot]
+  );
 
   return (
     <main className="app-shell">
@@ -129,8 +151,8 @@ export default function App() {
             Entra identities
             <select
               aria-label="Entra snapshot file"
-              value={entraFile}
-              onChange={(event) => setEntraFile(event.target.value)}
+              value={identityFile}
+              onChange={(event) => setIdentityFile(event.target.value)}
             >
               {files.length === 0 ? <option value="">No snapshots found in ./data</option> : null}
               {files.map((file) => (
@@ -145,12 +167,25 @@ export default function App() {
 
       {loadState.status === "error" ? <div className="alert">{loadState.message}</div> : null}
 
-      {resourceSnapshot && entraSnapshot ? (
+      {resourceSnapshot && identitySnapshot && baseReport ? (
         <OwnerReportView
-          resourceSnapshot={resourceSnapshot}
-          entraSnapshot={entraSnapshot}
-          resourceFile={selectedResourceFile}
-          entraFile={selectedEntraFile}
+          baseReport={baseReport}
+          buildOverview={reportModule.buildOverview}
+          buildProviderContext={reportContextFactory}
+          collectionTabs={reportModule.collectionTabs}
+          ownerColumnHelp={reportModule.ownerColumnHelp}
+          providers={reportModule.providers}
+          reportInputs={{
+            activityLogCount: resourceSnapshot.activityLogs.length,
+            entraFile: selectedIdentityFile,
+            entraSnapshotCreatedAt: identitySnapshot.meta.createdAt ?? null,
+            resourceFile: selectedResourceFile,
+            resourceGroupCount: resourceSnapshot.resourceGroups.length,
+            resourceSnapshotCreatedAt: resourceSnapshot.meta.createdAt ?? null,
+            servicePrincipalCount: identitySnapshot.servicePrincipals.length,
+            subscriptionCount: resourceSnapshot.subscriptions.length
+          }}
+          resetKey={`${resourceFile}:${identityFile}`}
         />
       ) : loadState.status === "loading" ? (
         <div className="empty-state">Loading report inputs...</div>
@@ -170,7 +205,7 @@ async function readSnapshot(name: string): Promise<SnapshotData> {
   return (await response.json()) as SnapshotData;
 }
 
-function assertProvider(snapshot: SnapshotData, expectedProvider: "azure" | "entra") {
+function assertProvider(snapshot: SnapshotData, expectedProvider: string) {
   if (snapshot.meta?.provider !== expectedProvider) {
     throw new Error(`Expected ${expectedProvider} snapshot, got ${String(snapshot.meta?.provider ?? "unknown")}.`);
   }
