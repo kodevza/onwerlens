@@ -73,10 +73,8 @@ export function buildManagedIdentityColumnConfig({
       help: azureServicePrincipalColumnHelp.permissionRisk,
       valueType: "riskLevel",
       getValue: (sp) => getManagedIdentityPermissionRiskForServicePrincipal(sp, permissionRiskIndex).riskLevel,
-      sortable: true,
       filter: {
-        kind: "multiSelect",
-        options: ["critical", "high", "medium", "low", "none"]
+        kind: "multiSelect"
       }
     },
     {
@@ -185,10 +183,8 @@ export function buildServicePrincipalColumnConfig({
       help: azureServicePrincipalColumnHelp.permissionRisk,
       valueType: "riskLevel",
       getValue: (sp) => getManagedIdentityPermissionRiskForServicePrincipal(sp, permissionRiskIndex).riskLevel,
-      sortable: true,
       filter: {
-        kind: "multiSelect",
-        options: ["critical", "high", "medium", "low", "none"]
+        kind: "multiSelect"
       }
     },
     {
@@ -320,10 +316,8 @@ export function buildEntraConsentInventoryColumnConfig({
       help: azureEntraConsentColumnHelp.risk,
       valueType: "riskLevel",
       getValue: (row) => row.riskLevel,
-      sortable: true,
       filter: {
-        kind: "multiSelect",
-        options: ["critical", "high", "medium", "low", "none"]
+        kind: "multiSelect"
       }
     },
     {

@@ -20,14 +20,9 @@ export type ReportDetailsValue = {
   searchText?: string;
 };
 
-export type ReportFilterDescriptor =
-  | {
-      kind: "text";
-    }
-  | {
-      kind: "multiSelect";
-      options?: string[];
-    };
+export type ReportFilterDescriptor = {
+  kind: "text" | "multiSelect";
+};
 
 export type ReportFieldDescriptor<TRow> = {
   id: string;
@@ -36,12 +31,7 @@ export type ReportFieldDescriptor<TRow> = {
   valueType: ReportValueType;
   getValue: (row: TRow) => unknown;
   searchable?: boolean;
-  sortable?: boolean;
   filter?: ReportFilterDescriptor;
-};
-
-export type ReportExportDescriptor<TRow> = {
-  getRows: (rows: TRow[]) => ReportCsvRow[];
 };
 
 export type ReportCollectionUiDescriptor<TId extends string = string> = {
@@ -64,7 +54,6 @@ export type ReportCollectionDescriptor<TContext, TRow = unknown> = {
   getRowKey: (row: TRow) => string;
   fields: ReportFieldDescriptor<TRow>[] | ((ctx: TContext) => ReportFieldDescriptor<TRow>[]);
   filters?: ReportFilterDescriptor[];
-  export?: ReportExportDescriptor<TRow>;
 };
 
 export type ErasedReportCollectionDescriptor<TContext> = {
@@ -76,7 +65,6 @@ export type ErasedReportCollectionDescriptor<TContext> = {
   getRowKey: (row: unknown) => string;
   fields: (ctx: TContext) => ReportFieldDescriptor<unknown>[];
   filters?: ReportFilterDescriptor[];
-  export?: ReportExportDescriptor<unknown>;
 };
 
 export type ReportProvider<TContext> = {
@@ -117,7 +105,6 @@ export function defineReportCollection<TContext, TRow>(
     getRowKey: (row) => definition.getRowKey(row as TRow),
     fields: (ctx) =>
       (typeof definition.fields === "function" ? definition.fields(ctx) : definition.fields) as ReportFieldDescriptor<unknown>[],
-    filters: definition.filters as ReportFilterDescriptor[] | undefined,
-    export: definition.export as ReportExportDescriptor<unknown> | undefined
+    filters: definition.filters as ReportFilterDescriptor[] | undefined
   };
 }

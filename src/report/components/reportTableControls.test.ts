@@ -103,8 +103,7 @@ test("applies descriptor-backed ownership and permission risk filters through ta
       valueType: "text",
       getValue: (row) => row.ownership,
       filter: {
-        kind: "multiSelect",
-        options: ["External", "Tenant owned", "Unknown"]
+        kind: "multiSelect"
       }
     },
     {
@@ -113,8 +112,7 @@ test("applies descriptor-backed ownership and permission risk filters through ta
       valueType: "riskLevel",
       getValue: (row) => row.risk,
       filter: {
-        kind: "multiSelect",
-        options: ["high", "low", "none"]
+        kind: "multiSelect"
       }
     }
   ];

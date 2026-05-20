@@ -33,8 +33,7 @@ export const ownerFields: ReportFieldDescriptor<OwnerReportRow>[] = [
     valueType: "ownerConfidence",
     getValue: (row) => row.confidence,
     filter: {
-      kind: "multiSelect",
-      options: ["high", "medium", "low", "none"]
+      kind: "multiSelect"
     }
   },
   {
