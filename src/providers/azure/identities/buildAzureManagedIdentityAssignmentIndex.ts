@@ -31,8 +31,6 @@ export function buildAzureManagedIdentityAssignmentIndex(resourceSnapshot: Azure
   return index;
 }
 
-export const buildManagedIdentityAssignmentIndex = buildAzureManagedIdentityAssignmentIndex;
-
 export function getManagedIdentityAssignmentsForServicePrincipal(
   servicePrincipal: EntraServicePrincipal,
   index: ManagedIdentityAssignmentIndex

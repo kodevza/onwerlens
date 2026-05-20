@@ -1,39 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  buildAzureAccessRiskIndex,
+  azureExportedCollections,
   buildAzureOwnershipReport,
-  buildManagedIdentityAssignmentIndex,
-  buildRoleAssignmentIndex
+  buildAzureReportOverview,
+  azureReportProvider,
+  azureOwnerColumnHelp,
+  type AzureReportInput,
+  type AzureExportedCollectionId,
+  type AzureSnapshot,
+  type EntraSnapshot
 } from "../providers/azure";
-import type { EntraSnapshot } from "../providers/azure/domain/entra";
-import type { AzureSnapshot } from "../providers/azure/domain/resources";
-import { ManagedIdentityTable } from "./components/ManagedIdentityTable";
+import type { ReportCsvRow, ReportExportArtifact, ReportExportFormat } from "../core/report/types";
+import { GenericOwnerTable } from "./components/GenericOwnerTable";
+import { GenericTable } from "./components/GenericTable";
 import { OwnerOverview } from "./components/OwnerOverview";
-import { OwnerTable } from "./components/OwnerTable";
 import { ReportDataSelection } from "./components/ReportDataSelection";
-import type { ExportFormat, ReportTab } from "./components/ReportDataSelection";
+import type { ReportCollectionTab } from "./components/ReportDataSelection";
 import { ReportInputs } from "./components/ReportInputs";
-import { ServicePrincipalTable } from "./components/ServicePrincipalTable";
 import type { OwnerReportRow, SnapshotFile } from "./types";
+import { buildCollectionColumns } from "./components/CollectionColumnsFactory";
+import type { ReportTableColumn } from "./components/reportTableControls";
 import {
   applyOwnerManualPrecheck,
-  buildOwnerManualPrecheckExport,
+  buildOwnerManualPrecheckExportArtifact,
   disableOwnerCandidate,
   enableOwnerCandidate,
   getOwnerEvidenceKey,
   type DisabledOwnerKey
 } from "./ownerManualPrecheck";
-import {
-  buildManagedIdentityExport,
-  buildServicePrincipalExport,
-  filterManagedIdentities,
-  filterOwners,
-  filterServicePrincipals,
-  isManagedIdentity,
-  isTenantOwned,
-  sortServicePrincipals
-} from "./reportViewUtils";
+import { filterOwners } from "./reportViewUtils";
 
 type OwnerReportViewProps = {
   resourceSnapshot: AzureSnapshot;
@@ -42,13 +38,15 @@ type OwnerReportViewProps = {
   entraFile?: SnapshotFile;
 };
 
+const reportProviders = [azureReportProvider];
+
 export function OwnerReportView({
   resourceSnapshot,
   entraSnapshot,
   resourceFile,
   entraFile
 }: OwnerReportViewProps) {
-  const [activeTab, setActiveTab] = useState<ReportTab>("owners");
+  const [activeTab, setActiveTab] = useState<AzureExportedCollectionId>("owners");
   const [query, setQuery] = useState("");
   const [disabledActivityOwnerKeys, setDisabledActivityOwnerKeys] = useState<Set<DisabledOwnerKey>>(() => new Set());
   const baseReport = useMemo(
@@ -59,49 +57,59 @@ export function OwnerReportView({
     () => applyOwnerManualPrecheck(baseReport, disabledActivityOwnerKeys),
     [baseReport, disabledActivityOwnerKeys]
   );
-  const managedIdentities = useMemo(
-    () => sortServicePrincipals(entraSnapshot.servicePrincipals.filter(isManagedIdentity)),
-    [entraSnapshot.servicePrincipals]
-  );
-  const servicePrincipals = useMemo(
-    () => sortServicePrincipals(entraSnapshot.servicePrincipals.filter((sp) => !isManagedIdentity(sp))),
-    [entraSnapshot.servicePrincipals]
-  );
-  const managedIdentityAssignmentIndex = useMemo(
-    () => buildManagedIdentityAssignmentIndex(resourceSnapshot),
-    [resourceSnapshot]
-  );
-  const roleAssignmentIndex = useMemo(() => buildRoleAssignmentIndex(resourceSnapshot), [resourceSnapshot]);
-  const managedIdentityPermissionRiskIndex = useMemo(
-    () => buildAzureAccessRiskIndex(resourceSnapshot),
-    [resourceSnapshot]
-  );
   const filteredOwners = useMemo(() => filterOwners(report.owners, query), [report.owners, query]);
-  const filteredManagedIdentities = useMemo(
+  const overview = useMemo(
     () =>
-      filterManagedIdentities(
-        managedIdentities,
-        query,
-        managedIdentityAssignmentIndex,
-        managedIdentityPermissionRiskIndex,
-        resourceSnapshot,
-        report.owners
-      ),
-    [managedIdentities, query, managedIdentityAssignmentIndex, managedIdentityPermissionRiskIndex, resourceSnapshot, report.owners]
-  );
-  const filteredServicePrincipals = useMemo(
-    () =>
-      filterServicePrincipals(
-        servicePrincipals,
-        query,
+      buildAzureReportOverview({
         entraSnapshot,
-        roleAssignmentIndex,
-        managedIdentityPermissionRiskIndex
-      ),
-    [servicePrincipals, query, entraSnapshot, roleAssignmentIndex, managedIdentityPermissionRiskIndex]
+        query,
+        report,
+        resourceSnapshot
+      }),
+    [entraSnapshot, query, report, resourceSnapshot]
   );
+  const tables = useMemo(() => {
+    const reportInput: AzureReportInput = {
+      entraSnapshot,
+      query,
+      report,
+      resourceSnapshot
+    };
+
+    return reportProviders.flatMap((provider) =>
+      provider.collections.map((collection) => ({
+        key: `${provider.id}:${collection.id}`,
+        providerId: provider.id,
+        collectionId: collection.id,
+        title: collection.title,
+        columns: buildCollectionColumns(collection.buildColumnConfig(reportInput)),
+        getRowKey: collection.getRowKey,
+        rows: collection.getRows(reportInput)
+      }))
+    );
+  }, [entraSnapshot, query, report, resourceSnapshot]);
+  const collections = useMemo<ReportCollectionTab<AzureExportedCollectionId>[]>(() => {
+    const reportInput: AzureReportInput = {
+      entraSnapshot,
+      query,
+      report,
+      resourceSnapshot
+    };
+
+    return azureExportedCollections.map((collection) => ({
+      ...collection,
+      count: getAzureCollectionCount(collection.id, reportInput),
+      onExport: getAzureCollectionExport(collection.id, {
+        reportInput,
+        reportProviders
+      })
+    }));
+  }, [entraSnapshot, query, report, resourceSnapshot]);
   const unresolvedCount = report.owners.filter((row) => row.confidence === "none").length;
-  const tenantOwnedServicePrincipalCount = servicePrincipals.filter((sp) => isTenantOwned(sp, entraSnapshot)).length;
+  const genericCollectionViews = useMemo(
+    () => buildGenericCollectionViews(tables),
+    [tables]
+  );
 
   useEffect(() => {
     setDisabledActivityOwnerKeys(new Set());
@@ -119,109 +127,167 @@ export function OwnerReportView({
     });
   }
 
-  function exportOwners(format: ExportFormat) {
-    const exportableReport = buildOwnerManualPrecheckExport(report);
-
-    if (format === "csv") {
-      downloadCsv(buildOwnerCsvRows(exportableReport.owners), "owner-report.csv");
-      return;
-    }
-
-    downloadJson(exportableReport, "owner-report.json");
-  }
-
-  function exportManagedIdentities(format: ExportFormat) {
-    const exportableReport = buildManagedIdentityExport(
-      managedIdentities,
-      managedIdentityAssignmentIndex,
-      managedIdentityPermissionRiskIndex,
-      resourceSnapshot,
-      report.owners,
-      report.meta
-    );
-
-    if (format === "csv") {
-      downloadCsv(exportableReport.managedIdentities, "managed-identities-report.csv");
-      return;
-    }
-
-    downloadJson(exportableReport, "managed-identities-report.json");
-  }
-
-  function exportServicePrincipals(format: ExportFormat) {
-    const exportableReport = buildServicePrincipalExport(
-      servicePrincipals,
-      entraSnapshot,
-      roleAssignmentIndex,
-      managedIdentityPermissionRiskIndex,
-      report.meta
-    );
-
-    if (format === "csv") {
-      downloadCsv(exportableReport.servicePrincipals, "service-principals-report.csv");
-      return;
-    }
-
-    downloadJson(exportableReport, "service-principals-report.json");
-  }
-
   return (
     <>
       <OwnerOverview
-        managedIdentityCount={managedIdentities.length}
+        managedIdentityCount={overview.managedIdentityCount}
         ownedCount={report.owners.length - unresolvedCount}
         ownerRowCount={report.owners.length}
-        servicePrincipalCount={servicePrincipals.length}
-        tenantOwnedServicePrincipalCount={tenantOwnedServicePrincipalCount}
+        servicePrincipalCount={overview.servicePrincipalCount}
+        tenantOwnedServicePrincipalCount={overview.tenantOwnedServicePrincipalCount}
         unresolvedCount={unresolvedCount}
       />
 
       <ReportInputs
-        activityLogCount={report.meta.activityLogCount}
+        activityLogCount={resourceSnapshot.activityLogs.length}
         entraFile={entraFile}
-        entraSnapshotCreatedAt={report.meta.entraSnapshotCreatedAt}
+        entraSnapshotCreatedAt={entraSnapshot.meta.createdAt ?? null}
         resourceFile={resourceFile}
-        resourceGroupCount={report.meta.resourceGroupCount}
-        resourceSnapshotCreatedAt={report.meta.resourceSnapshotCreatedAt}
-        servicePrincipalCount={report.meta.servicePrincipalCount}
-        subscriptionCount={report.meta.subscriptionCount}
+        resourceGroupCount={resourceSnapshot.resourceGroups.length}
+        resourceSnapshotCreatedAt={resourceSnapshot.meta.createdAt ?? null}
+        servicePrincipalCount={entraSnapshot.servicePrincipals.length}
+        subscriptionCount={resourceSnapshot.subscriptions.length}
       />
 
       <ReportDataSelection
         activeTab={activeTab}
-        managedIdentityCount={managedIdentities.length}
+        collections={collections}
         onQueryChange={setQuery}
-        onTabChange={setActiveTab}
-        ownerCount={report.owners.length}
+        onTabChange={(tab) => setActiveTab(tab as AzureExportedCollectionId)}
         query={query}
-        servicePrincipalCount={servicePrincipals.length}
-        onOwnerExport={exportOwners}
-        onManagedIdentityExport={exportManagedIdentities}
-        onServicePrincipalExport={exportServicePrincipals}
       >
         {activeTab === "owners" ? (
-          <OwnerTable rows={filteredOwners} onEvidenceDisabledChange={handleEvidenceDisabledChange} />
-        ) : null}
-        {activeTab === "managedIdentities" ? (
-          <ManagedIdentityTable
-            assignmentIndex={managedIdentityAssignmentIndex}
-            ownerRows={report.owners}
-            permissionRiskIndex={managedIdentityPermissionRiskIndex}
-            resourceSnapshot={resourceSnapshot}
-            servicePrincipals={filteredManagedIdentities}
+          <GenericOwnerTable
+            emptyMessage={getAzureCollection("owners").table.emptyMessage}
+            minWidthClassName={getAzureCollection("owners").table.minWidthClassName}
+            ownerColumnHelp={azureOwnerColumnHelp}
+            rows={filteredOwners}
+            onEvidenceDisabledChange={handleEvidenceDisabledChange}
           />
         ) : null}
-        {activeTab === "servicePrincipals" ? (
-          <ServicePrincipalTable
-            entraSnapshot={entraSnapshot}
-            permissionRiskIndex={managedIdentityPermissionRiskIndex}
-            roleAssignmentIndex={roleAssignmentIndex}
-            servicePrincipals={filteredServicePrincipals}
-          />
-        ) : null}
+        {activeTab !== "owners"
+          ? renderGenericCollectionTable(activeTab, genericCollectionViews, getAzureCollection(activeTab))
+          : null}
       </ReportDataSelection>
     </>
   );
+}
+
+type GenericCollectionView<TRow> = {
+  columns: ReportTableColumn<TRow>[];
+  getRowKey: (row: TRow) => string;
+  rows: TRow[];
+};
+
+type GenericReportTable = GenericCollectionView<unknown> & {
+  collectionId: string;
+  key: string;
+  providerId: string;
+  title: string;
+};
+
+type AzureCollectionExportOptions = {
+  reportInput: AzureReportInput;
+  reportProviders: typeof reportProviders;
+};
+
+function getAzureCollection(id: AzureExportedCollectionId) {
+  const collection = azureExportedCollections.find((entry) => entry.id === id);
+  if (!collection) {
+    throw new Error(`Unknown Azure report collection: ${id}`);
+  }
+
+  return collection;
+}
+
+function getAzureCollectionCount(
+  id: AzureExportedCollectionId,
+  reportInput: AzureReportInput
+): number {
+  if (id === "owners") {
+    return reportInput.report.owners.length;
+  }
+
+  return (
+    reportProviders
+      .flatMap((provider) => provider.collections)
+      .find((collection) => collection.id === id)
+      ?.getCount?.(reportInput) ?? 0
+  );
+}
+
+function getAzureCollectionExport(
+  id: AzureExportedCollectionId,
+  { reportInput, reportProviders }: AzureCollectionExportOptions
+): (format: ReportExportFormat) => void {
+  return (format) => {
+    if (id === "owners") {
+      downloadExport(
+        buildOwnerManualPrecheckExportArtifact(reportInput.report, format, getAzureCollection(id).fileBaseName)
+      );
+      return;
+    }
+
+    const artifact = reportProviders
+      .map((provider) => provider.buildExport?.(reportInput, id, format) ?? null)
+      .find((exportArtifact): exportArtifact is ReportExportArtifact => Boolean(exportArtifact));
+
+    if (artifact) {
+      downloadExport(artifact);
+    }
+  };
+}
+
+function buildGenericCollectionViews(
+  tables: GenericReportTable[]
+): Partial<Record<AzureExportedCollectionId, GenericCollectionView<unknown>>> {
+  const views: Partial<Record<AzureExportedCollectionId, GenericCollectionView<unknown>>> = {};
+
+  for (const table of tables) {
+    if (isAzureGenericCollectionId(table.collectionId)) {
+      views[table.collectionId] = {
+        columns: table.columns,
+        getRowKey: table.getRowKey,
+        rows: table.rows
+      };
+    }
+  }
+
+  return views;
+}
+
+function isAzureGenericCollectionId(id: string): id is Exclude<AzureExportedCollectionId, "owners"> {
+  return id === "managedIdentities" || id === "servicePrincipals" || id === "entraConsentInventory";
+}
+
+function renderGenericCollectionTable(
+  id: AzureExportedCollectionId,
+  views: Partial<Record<AzureExportedCollectionId, GenericCollectionView<unknown>>>,
+  collection: ReturnType<typeof getAzureCollection>
+) {
+  const view = views[id];
+  if (!view) {
+    return null;
+  }
+
+  return (
+    <GenericTable
+      columns={view.columns}
+      emptyMessage={collection.table.emptyMessage}
+      getRowKey={view.getRowKey}
+      minWidthClassName={collection.table.minWidthClassName}
+      rows={view.rows}
+    />
+  );
+}
+
+function downloadExport(artifact: ReportExportArtifact) {
+  if (artifact.kind === "csv") {
+    downloadCsv(artifact.rows, artifact.fileName);
+    return;
+  }
+
+  downloadJson(artifact.data, artifact.fileName);
 }
 
 function downloadJson(data: unknown, fileName: string) {
@@ -229,7 +295,7 @@ function downloadJson(data: unknown, fileName: string) {
   downloadBlob(blob, fileName);
 }
 
-function downloadCsv(rows: CsvRow[], fileName: string) {
+function downloadCsv(rows: ReportCsvRow[], fileName: string) {
   const blob = new Blob([serializeCsv(rows)], { type: "text/csv;charset=utf-8" });
   downloadBlob(blob, fileName);
 }
@@ -244,24 +310,7 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-type CsvRow = Record<string, unknown>;
-
-function buildOwnerCsvRows(rows: OwnerReportRow[]): CsvRow[] {
-  return rows.map((row) => ({
-    kind: row.kind,
-    subscriptionId: row.subscriptionId,
-    subscriptionName: row.subscriptionName,
-    resourceGroup: row.resourceGroup,
-    owner: row.owner,
-    confidence: row.confidence,
-    source: row.source,
-    evidence: row.evidence
-      .map((entry) => `${entry.user}${entry.date ? ` (${entry.date})` : ""}${entry.disabled ? " [disabled]" : ""}`)
-      .join("; ")
-  }));
-}
-
-function serializeCsv(rows: CsvRow[]): string {
+function serializeCsv(rows: ReportCsvRow[]): string {
   if (rows.length === 0) {
     return "";
   }

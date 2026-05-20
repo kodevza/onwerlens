@@ -1,6 +1,8 @@
 import type { AzureRoleAssignment } from "../domain/resources";
 
-export type ManagedIdentityPermissionRiskLevel = "high" | "medium" | "low" | "none";
+import type { PermissionRiskLevel } from "../../../core/risk/types";
+
+export type ManagedIdentityPermissionRiskLevel = PermissionRiskLevel;
 
 export type ManagedIdentityPermissionRiskAssignment = AzureRoleAssignment & {
   riskLevel: ManagedIdentityPermissionRiskLevel;

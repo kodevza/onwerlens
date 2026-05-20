@@ -6,7 +6,10 @@ subscriptions and resource groups using tags, cost center mappings, role
 assignments, managed identities, service principals, groups, and activity-log
 evidence.
 
-The app runs locally with Vite. Snapshot files stay on your machine and are read
+The application is intended to reconcile cloud provider ownership data
+(currently Azure) and export the resolved ownership results for Identity and Access Management (IAM) systems.
+
+The app runs locally with Vite. Snapshot file (exported by ./tools/* scripts) stay on your machine and are read
 from the repository `data` directory by the development server.
 
 ## Features
@@ -17,6 +20,8 @@ from the repository `data` directory by the development server.
 - Review ownership confidence and supporting evidence.
 - Inspect Azure role assignment and permission risk signals.
 - Review managed identity and service principal relationships.
+- Export resolved ownership results to CSV and JSON files for resource groups,
+  service principals, and managed identities.
 - Switch between snapshot files found in `./data`.
 
 ## Requirements

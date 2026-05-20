@@ -15,21 +15,75 @@ if (-not $context) {
 $snapshot = [ordered]@{
   meta = [ordered]@{
     provider = "entra"
-    snapshotVersion = "0.2"
+    snapshotVersion = "0.3"
     createdAt = (Get-Date).ToUniversalTime().ToString("o")
     tenantId = $context.TenantId
     account = $context.Account
     scopes = $context.Scopes
   }
   servicePrincipals = @()
+  oauth2PermissionGrants = @()
+  appRoleAssignments = @()
   groups = @()
+}
+
+function Get-DirectoryObjectSnapshotValue {
+  param(
+    [Parameter(Mandatory = $true)]
+    $DirectoryObject,
+
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  $value = $DirectoryObject.$Name
+
+  if ($null -ne $value) {
+    return $value
+  }
+
+  $camelName = $Name.Substring(0, 1).ToLowerInvariant() + $Name.Substring(1)
+  if (-not $DirectoryObject.AdditionalProperties) {
+    return $null
+  }
+
+  return $DirectoryObject.AdditionalProperties[$camelName]
+}
+
+function ConvertTo-OwnerSnapshot {
+  param(
+    [Parameter(Mandatory = $true)]
+    $Owner
+  )
+
+  [pscustomobject]@{
+    id = Get-DirectoryObjectSnapshotValue -DirectoryObject $Owner -Name "Id"
+    displayName = Get-DirectoryObjectSnapshotValue -DirectoryObject $Owner -Name "DisplayName"
+    userPrincipalName = Get-DirectoryObjectSnapshotValue -DirectoryObject $Owner -Name "UserPrincipalName"
+    mail = Get-DirectoryObjectSnapshotValue -DirectoryObject $Owner -Name "Mail"
+    ownerType = if ($Owner.AdditionalProperties) { $Owner.AdditionalProperties["@odata.type"] } else { $null }
+  }
 }
 
 $servicePrincipals = Get-MgServicePrincipal `
   -All `
-  -Property Id,AppId,DisplayName,ServicePrincipalType,PublisherName,AccountEnabled,AppOwnerOrganizationId,AppDisplayName,Homepage,LoginUrl,ReplyUrls,ServicePrincipalNames,Tags
+  -Property Id,AppId,DisplayName,ServicePrincipalType,PublisherName,AccountEnabled,AppOwnerOrganizationId,AppDisplayName,Homepage,LoginUrl,ReplyUrls,ServicePrincipalNames,Tags,AppRoles
+
+$servicePrincipalById = @{}
 
 foreach ($sp in $servicePrincipals) {
+  $servicePrincipalById[$sp.Id] = $sp
+}
+
+foreach ($sp in $servicePrincipals) {
+  $servicePrincipalOwners = @(
+    Get-MgServicePrincipalOwner `
+      -ServicePrincipalId $sp.Id `
+      -All `
+      -Property Id,DisplayName,UserPrincipalName,Mail |
+      ForEach-Object { ConvertTo-OwnerSnapshot -Owner $_ }
+  )
+
   $snapshot.servicePrincipals += [pscustomobject]@{
     id = $sp.Id
     appId = $sp.AppId
@@ -44,6 +98,58 @@ foreach ($sp in $servicePrincipals) {
     replyUrls = $sp.ReplyUrls
     servicePrincipalNames = $sp.ServicePrincipalNames
     tags = $sp.Tags
+    servicePrincipalOwners = $servicePrincipalOwners
+    appRoles = @(
+      $sp.AppRoles | ForEach-Object {
+        [pscustomobject]@{
+          id = $_.Id
+          value = $_.Value
+          displayName = $_.DisplayName
+          description = $_.Description
+          isEnabled = $_.IsEnabled
+          allowedMemberTypes = $_.AllowedMemberTypes
+        }
+      }
+    )
+  }
+}
+
+$oauth2PermissionGrants = Get-MgOauth2PermissionGrant -All
+
+foreach ($grant in $oauth2PermissionGrants) {
+  $snapshot.oauth2PermissionGrants += [pscustomobject]@{
+    id = $grant.Id
+    clientId = $grant.ClientId
+    consentType = $grant.ConsentType
+    principalId = $grant.PrincipalId
+    resourceId = $grant.ResourceId
+    scope = $grant.Scope
+  }
+}
+
+foreach ($sp in $servicePrincipals) {
+  $assignments = Get-MgServicePrincipalAppRoleAssignment `
+    -ServicePrincipalId $sp.Id `
+    -All
+
+  foreach ($assignment in $assignments) {
+    $resourceServicePrincipal = $servicePrincipalById[$assignment.ResourceId]
+    $appRole = $null
+
+    if ($resourceServicePrincipal -and $resourceServicePrincipal.AppRoles) {
+      $appRole = $resourceServicePrincipal.AppRoles | Where-Object { [string]$_.Id -eq [string]$assignment.AppRoleId } | Select-Object -First 1
+    }
+
+    $snapshot.appRoleAssignments += [pscustomobject]@{
+      id = $assignment.Id
+      appRoleId = $assignment.AppRoleId
+      appRoleDisplayName = if ($appRole) { $appRole.DisplayName } else { $null }
+      appRoleValue = if ($appRole) { $appRole.Value } else { $null }
+      principalId = $assignment.PrincipalId
+      principalDisplayName = $assignment.PrincipalDisplayName
+      resourceId = $assignment.ResourceId
+      resourceDisplayName = $assignment.ResourceDisplayName
+    }
   }
 }
 
@@ -85,6 +191,8 @@ foreach ($group in $groups) {
 }
 
 $snapshot.meta.servicePrincipalCount = $snapshot.servicePrincipals.Count
+$snapshot.meta.oauth2PermissionGrantCount = $snapshot.oauth2PermissionGrants.Count
+$snapshot.meta.appRoleAssignmentCount = $snapshot.appRoleAssignments.Count
 $snapshot.meta.groupCount = $snapshot.groups.Count
 
 $outputDirectory = Split-Path -Parent $OutputPath
@@ -92,4 +200,4 @@ if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and -not (Test-Path $ou
   New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 }
 
-$snapshot | ConvertTo-Json -Depth 10 | Out-File $OutputPath -Encoding utf8
+$snapshot | ConvertTo-Json -Depth 20 | Out-File $OutputPath -Encoding utf8

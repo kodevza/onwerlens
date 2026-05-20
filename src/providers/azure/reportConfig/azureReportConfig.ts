@@ -1,6 +1,6 @@
-import type { ReportTableColumnHelp } from "./reportTableControls";
+import type { ReportColumnHelp } from "../../../core/report/types";
 
-export const ownerColumnHelp = {
+export const azureOwnerColumnHelp = {
   target: {
     source: "Computed by app from Azure resource snapshot JSON.",
     logic: [
@@ -46,9 +46,9 @@ export const ownerColumnHelp = {
       "Service principal callers are displayed by Entra display name when known."
     ]
   }
-} satisfies Record<string, ReportTableColumnHelp>;
+} satisfies Record<string, ReportColumnHelp>;
 
-export const managedIdentityColumnHelp = {
+export const azureManagedIdentityColumnHelp = {
   displayName: {
     source: "Direct from Entra JSON.",
     field: "displayName",
@@ -124,16 +124,42 @@ export const managedIdentityColumnHelp = {
     field: "tags",
     logic: ["Array values are joined with commas; empty arrays are shown as a dash."]
   }
-} satisfies Record<string, ReportTableColumnHelp>;
+} satisfies Record<string, ReportColumnHelp>;
 
-export const servicePrincipalColumnHelp = {
-  ...managedIdentityColumnHelp,
+export const azureServicePrincipalColumnHelp = {
+  ...azureManagedIdentityColumnHelp,
   ownership: {
     source: "Computed by app from Entra JSON.",
     logic: [
       "ManagedIdentity service principals are treated as Tenant owned.",
       "Application service principals are Tenant owned when appOwnerOrganizationId equals the snapshot tenantId.",
       "A different appOwnerOrganizationId is External; a missing value is Unknown."
+    ]
+  },
+  servicePrincipalOwners: {
+    source: "Direct from Entra JSON.",
+    field: "servicePrincipals[].servicePrincipalOwners",
+    logic: [
+      "Exported from the Microsoft Graph Service Principal owners relationship.",
+      "Owner mail is preferred, then userPrincipalName, displayName, and object ID.",
+      "Multiple owners are shown as a comma-separated list."
+    ]
+  },
+  potentialOwner: {
+    source: "Computed by app from Entra JSON, Service Principal metadata, and Azure owner report rows.",
+    logic: [
+      "First uses explicit owner metadata on the Service Principal or Application, including owner-style tag values.",
+      "Then uses Entra Application or Service Principal owner records when present in the snapshot.",
+      "Finally projects the resolved owner of Azure RBAC target subscription or resource group scopes."
+    ]
+  },
+  ownerConfidence: {
+    source: "Computed by app from the Service Principal potential owner source.",
+    logic: [
+      "Explicit Service Principal or Application owner metadata is high confidence.",
+      "Entra Application or Service Principal owners are medium confidence.",
+      "Owners inferred from Azure RBAC target scopes are low confidence.",
+      "No usable owner evidence returns none."
     ]
   },
   azureRbac: {
@@ -149,4 +175,76 @@ export const servicePrincipalColumnHelp = {
     field: "servicePrincipalType",
     logic: ["Displayed as-is, with empty values shown as a dash."]
   }
-} satisfies Record<string, ReportTableColumnHelp>;
+} satisfies Record<string, ReportColumnHelp>;
+
+export const azureEntraConsentColumnHelp = {
+  identity: {
+    source: "Computed by app from Entra servicePrincipals JSON.",
+    field: "servicePrincipals[].displayName",
+    logic: ["Shows the Service Principal or Enterprise Application that owns the grant or app role assignment."]
+  },
+  owner: {
+    source: "Computed by app from existing Service Principal ownership logic.",
+    logic: [
+      "Uses the same Tenant owned, External, and Unknown resolution as the Service Principals section.",
+      "Unknown owners are marked as high risk."
+    ]
+  },
+  potentialOwner: {
+    source: "Computed by app from the consent row Service Principal.",
+    logic: [
+      "Uses the same potential owner resolution as the Service Principals section.",
+      "First checks explicit owner metadata, then Entra owners, then Azure RBAC target scope owners."
+    ]
+  },
+  ownerConfidence: {
+    source: "Computed by app from the consent row Service Principal potential owner source.",
+    logic: [
+      "Explicit Service Principal or Application owner metadata is high confidence.",
+      "Entra Application or Service Principal owners are medium confidence.",
+      "Owners inferred from Azure RBAC target scopes are low confidence.",
+      "No usable owner evidence returns none."
+    ]
+  },
+  resourceApi: {
+    source: "Computed by app from oauth2PermissionGrants.resourceId and appRoleAssignments.resourceId.",
+    logic: [
+      "Joins resourceId to servicePrincipals.id to show the resource API display name, such as Microsoft Graph.",
+      "Falls back to the resource object ID when the resource Service Principal is not in the snapshot."
+    ]
+  },
+  consentType: {
+    source: "Direct from Entra oauth2PermissionGrants JSON.",
+    field: "oauth2PermissionGrants[].consentType",
+    logic: ["Application permission rows without a delegated grant show a dash."]
+  },
+  delegatedScopes: {
+    source: "Direct from Entra oauth2PermissionGrants JSON.",
+    field: "oauth2PermissionGrants[].scope",
+    logic: [
+      "Splits space-separated delegated OAuth scopes.",
+      "Broad scopes such as Directory.Read.All, Sites.Read.All, Files.Read.All, and Mail.Read are marked as high risk."
+    ]
+  },
+  applicationPermissions: {
+    source: "Computed by app from Entra appRoleAssignments JSON.",
+    logic: [
+      "Lists app role assignment values for application permissions granted to the Service Principal.",
+      "Values are resolved from the exported app role assignment or resource Service Principal appRoles when available."
+    ]
+  },
+  risk: {
+    source: "Computed by app from Entra grants, app role assignments, owner resolution, and Azure RBAC.",
+    logic: [
+      "AllPrincipals grants are high risk.",
+      "Broad delegated scopes are high risk.",
+      "Unknown owner is high risk.",
+      "A Service Principal with both Azure RBAC and delegated Graph/API permissions is high risk.",
+      "Delegated grants that do not match a high-risk rule are medium risk."
+    ]
+  },
+  reasons: {
+    source: "Computed by app from Entra consent risk rules.",
+    logic: ["Explains the risk rules that matched for the identity and resource API row."]
+  }
+} satisfies Record<string, ReportColumnHelp>;

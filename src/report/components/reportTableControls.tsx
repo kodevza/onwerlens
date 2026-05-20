@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { Input } from "../../components/ui/input";
-import { TableHead } from "../../components/ui/table";
-import { hasSearchExpression, matchesSearchExpression } from "../searchFilterUtils";
+import { Input } from "./ui/input";
+import { TableHead } from "./ui/table";
+import type { ReportColumnHelp } from "../../core/report/types";
+import { hasSearchExpression, matchesSearchExpression } from "../../lib/searchFilterUtils";
 
 export type SortDirection = "asc" | "desc";
 
@@ -17,15 +18,9 @@ export type ReportTableColumn<TRow> = {
   label: string;
   className?: string;
   filter?: "auto" | "text" | "multiselect";
-  help?: ReportTableColumnHelp;
+  help?: ReportColumnHelp;
   getValue: (row: TRow) => unknown;
   render: (row: TRow) => ReactNode;
-};
-
-export type ReportTableColumnHelp = {
-  source: string;
-  field?: string;
-  logic?: string[];
 };
 
 type ColumnFilter =
@@ -309,7 +304,7 @@ export function ReportTableHead<TRow>({
   );
 }
 
-function ColumnInfo({ label, help }: { label: string; help: ReportTableColumnHelp }) {
+function ColumnInfo({ label, help }: { label: string; help: ReportColumnHelp }) {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
 
@@ -364,7 +359,7 @@ function ColumnInfoTooltip({
   top
 }: {
   label: string;
-  help: ReportTableColumnHelp;
+  help: ReportColumnHelp;
   left: number;
   top: number;
 }) {

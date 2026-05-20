@@ -1,15 +1,21 @@
 import { useMemo } from "react";
 
-import { Table, TableBody, TableCell, TableContainer, TableHeader, TableRow } from "../../components/ui/table";
 import type { OwnerReportRow } from "../types";
 import { formatTarget } from "../reportViewUtils";
 import { isActivityOwnerRow } from "../ownerManualPrecheck";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { EvidenceList } from "./EvidenceList";
-import { ownerColumnHelp } from "./reportTableHelp";
-import { ReportTableHead, useReportTableControls, type ReportTableColumn } from "./reportTableControls";
+import { GenericTable } from "./GenericTable";
+import type { ReportColumnHelp } from "../../core/report/types";
+import type { ReportTableColumn } from "./reportTableControls";
+
+type OwnerColumnHelp = Record<
+  "target" | "subscription" | "owner" | "confidence" | "source" | "evidence",
+  ReportColumnHelp
+>;
 
 function buildOwnerColumns(
+  ownerColumnHelp: OwnerColumnHelp,
   onEvidenceDisabledChange?: (row: OwnerReportRow, evidenceIndex: number, disabled: boolean) => void
 ): ReportTableColumn<OwnerReportRow>[] {
   return [
@@ -71,59 +77,31 @@ function buildOwnerColumns(
   ];
 }
 
-export function OwnerTable({
+export function GenericOwnerTable({
+  emptyMessage,
+  minWidthClassName,
+  ownerColumnHelp,
   rows,
   onEvidenceDisabledChange
 }: {
+  emptyMessage: string;
+  minWidthClassName: string;
+  ownerColumnHelp: OwnerColumnHelp;
   rows: OwnerReportRow[];
   onEvidenceDisabledChange?: (row: OwnerReportRow, evidenceIndex: number, disabled: boolean) => void;
 }) {
-  const ownerColumns = useMemo(() => buildOwnerColumns(onEvidenceDisabledChange), [onEvidenceDisabledChange]);
-  const {
-    controlledRows,
-    filterOptions,
-    filters,
-    openFilterColumnId,
-    setColumnFilter,
-    setColumnFilterOpen,
-    setColumnValuesFilter,
-    sortRules,
-    toggleColumnValueFilter,
-    toggleColumnSort
-  } = useReportTableControls(rows, ownerColumns);
+  const ownerColumns = useMemo(
+    () => buildOwnerColumns(ownerColumnHelp, onEvidenceDisabledChange),
+    [ownerColumnHelp, onEvidenceDisabledChange]
+  );
 
   return (
-    <TableContainer>
-      <Table className="min-w-[960px]">
-        <TableHeader>
-          <TableRow>
-            <ReportTableHead
-              columns={ownerColumns}
-              filterOptions={filterOptions}
-              filters={filters}
-              openFilterColumnId={openFilterColumnId}
-              sortRules={sortRules}
-              onFilterChange={setColumnFilter}
-              onFilterOpenChange={setColumnFilterOpen}
-              onValueFilterToggle={toggleColumnValueFilter}
-              onValuesFilterChange={setColumnValuesFilter}
-              onSortToggle={toggleColumnSort}
-            />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {controlledRows.map((row) => (
-            <TableRow key={`${row.kind}:${row.subscriptionId}:${row.resourceGroup ?? ""}`}>
-              {ownerColumns.map((column) => (
-                <TableCell key={column.id}>{column.render(row)}</TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {controlledRows.length === 0 ? (
-        <div className="p-4 text-sm text-muted-foreground">No owner rows match the filter.</div>
-      ) : null}
-    </TableContainer>
+    <GenericTable
+      columns={ownerColumns}
+      emptyMessage={emptyMessage}
+      getRowKey={(row) => row.targetKey}
+      minWidthClassName={minWidthClassName}
+      rows={rows}
+    />
   );
 }

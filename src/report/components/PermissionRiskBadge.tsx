@@ -1,14 +1,16 @@
-import { Badge, type BadgeProps } from "../../components/ui/badge";
-import type { ManagedIdentityPermissionRiskLevel } from "../../providers/azure";
+import { Badge, type BadgeProps } from "./ui/badge";
+import type { PermissionRiskLevel } from "../../core/risk/types";
 
-const permissionRiskBadgeVariants: Record<ManagedIdentityPermissionRiskLevel, BadgeProps["variant"]> = {
+export type { PermissionRiskLevel };
+
+const permissionRiskBadgeVariants: Record<PermissionRiskLevel, BadgeProps["variant"]> = {
   high: "riskHigh",
   medium: "riskMedium",
   low: "riskLow",
   none: "riskNone"
 };
 
-export function PermissionRiskBadge({ riskLevel }: { riskLevel: ManagedIdentityPermissionRiskLevel }) {
+export function PermissionRiskBadge({ riskLevel }: { riskLevel: PermissionRiskLevel }) {
   return (
     <Badge className="capitalize" variant={permissionRiskBadgeVariants[riskLevel]}>
       {riskLevel}

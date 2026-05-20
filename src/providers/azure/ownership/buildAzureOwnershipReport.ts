@@ -1,6 +1,6 @@
 import type { EntraSnapshot } from "../domain/entra";
 import type { AzureSnapshot } from "../domain/resources";
-import type { OwnerReport, OwnerReportRow } from "../../../report/types";
+import type { OwnerReport, OwnerReportRow } from "./azureOwnerReportTypes";
 import { azureOwnershipConfig } from "./azureOwnershipConfig";
 import { buildActivityIndex } from "./resolveAzureOwner";
 import { buildServicePrincipalIndex } from "./azureActivityOwnershipEvidence";
@@ -33,14 +33,6 @@ export function buildAzureOwnershipReport(
   });
 
   return {
-    meta: {
-      resourceSnapshotCreatedAt: resourceSnapshot.meta.createdAt ?? null,
-      entraSnapshotCreatedAt: entraSnapshot.meta.createdAt ?? null,
-      subscriptionCount: resourceSnapshot.subscriptions.length,
-      resourceGroupCount: resourceSnapshot.resourceGroups.length,
-      activityLogCount: resourceSnapshot.activityLogs.length,
-      servicePrincipalCount: entraSnapshot.servicePrincipals.length
-    },
     owners
   };
 }
@@ -63,10 +55,11 @@ function getTargets(kind: OwnerTarget["kind"], resourceSnapshot: AzureSnapshot):
 
 function getTargetIdentity(target: OwnerTarget): Pick<
   OwnerReportRow,
-  "kind" | "subscriptionId" | "subscriptionName" | "resourceGroup"
+  "targetKey" | "kind" | "subscriptionId" | "subscriptionName" | "resourceGroup"
 > {
   if (target.kind === "subscription") {
     return {
+      targetKey: getAzureOwnerTargetKey(target.kind, target.subscription.subscriptionId, null),
       kind: target.kind,
       subscriptionId: target.subscription.subscriptionId,
       subscriptionName: target.subscription.subscriptionName,
@@ -75,9 +68,22 @@ function getTargetIdentity(target: OwnerTarget): Pick<
   }
 
   return {
+    targetKey: getAzureOwnerTargetKey(
+      target.kind,
+      target.resourceGroup.subscriptionId,
+      target.resourceGroup.resourceGroup
+    ),
     kind: target.kind,
     subscriptionId: target.resourceGroup.subscriptionId,
     subscriptionName: target.resourceGroup.subscriptionName,
     resourceGroup: target.resourceGroup.resourceGroup
   };
+}
+
+function getAzureOwnerTargetKey(
+  kind: OwnerReportRow["kind"],
+  subscriptionId: string,
+  resourceGroup: string | null
+): string {
+  return [kind, subscriptionId.toLowerCase(), (resourceGroup ?? "").toLowerCase()].join(":");
 }

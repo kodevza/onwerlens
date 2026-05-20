@@ -1,6 +1,5 @@
 export {
   buildAzureManagedIdentityAssignmentIndex,
-  buildManagedIdentityAssignmentIndex,
   getManagedIdentityAssignmentsForServicePrincipal,
   normalizeUserAssignedIdentityAssignments
 } from "./buildAzureManagedIdentityAssignmentIndex";

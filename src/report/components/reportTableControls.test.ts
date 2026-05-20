@@ -8,8 +8,9 @@ import {
 import { buildAzureAccessRiskIndex, buildRoleAssignmentIndex } from "../../providers/azure";
 import type { EntraServicePrincipal, EntraSnapshot } from "../../providers/azure/domain/entra";
 import type { AzureRoleAssignment, AzureSnapshot } from "../../providers/azure/domain/resources";
-import { formatServicePrincipalOwnership } from "../reportViewUtils.ts";
-import { buildServicePrincipalTableColumns } from "./ServicePrincipalTable.tsx";
+import { formatServicePrincipalOwnership } from "../../providers/azure/reportConfig/azureReportFormatters.ts";
+import { buildServicePrincipalColumnConfig } from "../../providers/azure/reportConfig/azureCollectionDescriptors.ts";
+import { buildCollectionColumns } from "./CollectionColumnsFactory.tsx";
 
 type Row = {
   id: string;
@@ -117,10 +118,13 @@ test("applies captured service principal ownership and permission risk filters t
     roleAssignment("external-high", "Owner"),
     roleAssignment("unknown-high", "Owner")
   ]);
-  const columns = buildServicePrincipalTableColumns(
-    entraSnapshot,
-    buildAzureAccessRiskIndex(azureSnapshot),
-    buildRoleAssignmentIndex(azureSnapshot)
+  const columns = buildCollectionColumns(
+    buildServicePrincipalColumnConfig({
+      entraSnapshot,
+      ownerRows: [],
+      permissionRiskIndex: buildAzureAccessRiskIndex(azureSnapshot),
+      roleAssignmentIndex: buildRoleAssignmentIndex(azureSnapshot)
+    })
   );
 
   const result = applyReportTableControls(servicePrincipals, columns, {
