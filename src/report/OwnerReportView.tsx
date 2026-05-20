@@ -1,13 +1,23 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { applyCollectionControls } from "./applyCollectionControls";
+import type { ReportColumnRenderers } from "./buildCollectionColumns";
+import { EvidenceList } from "./components/EvidenceList";
 import { GenericTable } from "./components/GenericTable";
 import { OwnerOverview } from "./components/OwnerOverview";
 import { ReportDataSelection } from "./components/ReportDataSelection";
 import type { ReportCollectionTab } from "./components/ReportDataSelection";
 import { ReportInputs, type ReportInputsProps } from "./components/ReportInputs";
 import { downloadReportArtifact } from "./export/downloadReportArtifact";
-import { applyOwnerManualPrecheck, buildOwnerManualPrecheckExportArtifact } from "./ownerManualPrecheck";
+import {
+  applyOwnerManualPrecheck,
+  buildOwnerManualPrecheckExportArtifact,
+  disableOwnerCandidate,
+  enableOwnerCandidate,
+  getOwnerEvidenceKey,
+  isActivityOwnerRow,
+  type DisabledOwnerKey
+} from "./ownerManualPrecheck";
 import type {
   ErasedReportCollectionDescriptor,
   ReportCollectionUiDescriptor,
@@ -17,7 +27,7 @@ import type {
   ReportProvider
 } from "./reportTypes";
 import type { ProviderOverview } from "./reportProviderModule";
-import type { OwnerReport } from "./types";
+import type { OwnerEvidence, OwnerReport, OwnerReportRow } from "./types";
 
 type OwnerReportViewProps<TContext> = {
   baseReport: OwnerReport;
@@ -37,8 +47,34 @@ export function OwnerReportView<TContext>({
   reportInputs
 }: OwnerReportViewProps<TContext>) {
   const [activeTab, setActiveTab] = useState(collectionTabs[0]?.id ?? "owners");
+  const [disabledOwnerKeys, setDisabledOwnerKeys] = useState<ReadonlySet<DisabledOwnerKey>>(() => new Set());
   const [query, setQuery] = useState("");
-  const report = useMemo(() => applyOwnerManualPrecheck(baseReport, new Set()), [baseReport]);
+  const report = useMemo(() => applyOwnerManualPrecheck(baseReport, disabledOwnerKeys), [baseReport, disabledOwnerKeys]);
+  const handleOwnerEvidenceDisabledChange = useCallback(
+    (row: OwnerReportRow, entry: OwnerEvidence, disabled: boolean) => {
+      setDisabledOwnerKeys((currentKeys) => {
+        const key = getOwnerEvidenceKey(row, entry);
+        return disabled ? disableOwnerCandidate(currentKeys, key) : enableOwnerCandidate(currentKeys, key);
+      });
+    },
+    []
+  );
+  const ownerFieldRenderers = useMemo<ReportColumnRenderers<unknown>>(
+    () => ({
+      evidence: (row) => {
+        const ownerRow = row as OwnerReportRow;
+
+        return (
+          <EvidenceList
+            canDisable={isActivityOwnerRow(ownerRow)}
+            evidence={ownerRow.evidence}
+            onDisabledChange={(entry, disabled) => handleOwnerEvidenceDisabledChange(ownerRow, entry, disabled)}
+          />
+        );
+      }
+    }),
+    [handleOwnerEvidenceDisabledChange]
+  );
   const reportContext = useMemo(
     () => buildProviderContext({ query, report }),
     [buildProviderContext, query, report]
@@ -47,9 +83,13 @@ export function OwnerReportView<TContext>({
   const tables = useMemo(
     () =>
       providers.flatMap((provider) =>
-        provider.collections.map((collection) => buildGenericReportTable(provider.id, collection, reportContext, query))
+        provider.collections.map((collection) =>
+          buildGenericReportTable(provider.id, collection, reportContext, query, {
+            fieldRenderers: collection.id === "owners" ? ownerFieldRenderers : undefined
+          })
+        )
       ),
-    [providers, query, reportContext]
+    [ownerFieldRenderers, providers, query, reportContext]
   );
   const collections = useMemo<ReportCollectionTab[]>(
     () =>
@@ -95,6 +135,7 @@ export function OwnerReportView<TContext>({
 
 type GenericCollectionView<TRow> = {
   fields: ReportFieldDescriptor<TRow>[];
+  fieldRenderers?: ReportColumnRenderers<TRow>;
   getRowKey: (row: TRow) => string;
   rows: TRow[];
 };
@@ -116,7 +157,8 @@ function buildGenericReportTable<TContext>(
   providerId: string,
   collection: ErasedReportCollectionDescriptor<TContext>,
   reportContext: TContext,
-  query: string
+  query: string,
+  { fieldRenderers }: { fieldRenderers?: ReportColumnRenderers<unknown> } = {}
 ): GenericReportTable {
   const fields = collection.fields(reportContext);
   const rows = applyCollectionControls(collection.getRows(reportContext), fields, { query }).controlledRows;
@@ -127,6 +169,7 @@ function buildGenericReportTable<TContext>(
     collectionId: collection.id,
     title: collection.title,
     fields,
+    fieldRenderers,
     getRowKey: collection.getRowKey,
     rows
   };
@@ -180,6 +223,7 @@ function buildGenericCollectionViews(tables: GenericReportTable[]): Record<strin
   for (const table of tables) {
     views[table.collectionId] = {
       fields: table.fields,
+      fieldRenderers: table.fieldRenderers,
       getRowKey: table.getRowKey,
       rows: table.rows
     };
@@ -201,6 +245,7 @@ function renderGenericCollectionTable(
   return (
     <GenericTable
       emptyMessage={collection.table.emptyMessage}
+      fieldRenderers={view.fieldRenderers}
       fields={view.fields}
       getRowKey={view.getRowKey}
       minWidthClassName={collection.table.minWidthClassName}
