@@ -53,7 +53,8 @@ test("generic column factory builds columns from field descriptors", () => {
     ["owner", "Owner", "auto"],
     ["risk", "Permission risk", "multiselect"]
   ]);
-  expect(columns[1].getValue(rows[0])).toBe("high");
+  expect(columns[1]).not.toHaveProperty("getValue");
+  expect(columns[1].render).toEqual(expect.any(Function));
 });
 
 test("Azure provider source does not contain UI rendering concepts", () => {

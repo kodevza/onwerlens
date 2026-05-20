@@ -1,21 +1,31 @@
+import { useMemo } from "react";
+
+import { buildCollectionColumns, type ReportColumnRenderers } from "../buildCollectionColumns";
+import type { ReportFieldDescriptor } from "../reportTypes";
 import { Table, TableBody, TableCell, TableContainer, TableHeader, TableRow } from "./ui/table";
-import { ReportTableHead, useReportTableControls, type ReportTableColumn } from "./reportTableControls";
+import { ReportTableHead, useReportTableControls } from "./reportTableControls";
 
 type GenericTableProps<TRow> = {
-  columns: ReportTableColumn<TRow>[];
   emptyMessage: string;
+  fields: ReportFieldDescriptor<TRow>[];
+  fieldRenderers?: ReportColumnRenderers<TRow>;
   getRowKey: (row: TRow) => string;
   minWidthClassName: string;
   rows: TRow[];
 };
 
 export function GenericTable<TRow>({
-  columns,
   emptyMessage,
+  fields,
+  fieldRenderers,
   getRowKey,
   minWidthClassName,
   rows
 }: GenericTableProps<TRow>) {
+  const columns = useMemo(
+    () => buildCollectionColumns(fields, { renderers: fieldRenderers }),
+    [fields, fieldRenderers]
+  );
   const {
     controlledRows,
     filterOptions,
@@ -27,7 +37,7 @@ export function GenericTable<TRow>({
     sortRules,
     toggleColumnValueFilter,
     toggleColumnSort
-  } = useReportTableControls(rows, columns);
+  } = useReportTableControls(rows, fields);
 
   return (
     <TableContainer>

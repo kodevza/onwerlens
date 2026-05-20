@@ -2,11 +2,9 @@ import {
   applyColumnFilterOpen,
   applyColumnFilterValueToggle,
   applyColumnValueToggle,
-  applyReportTableControls,
-  type ReportTableColumn
+  applyReportTableControls
 } from "./reportTableControls.tsx";
 import type { ReportFieldDescriptor } from "../reportTypes.ts";
-import { buildCollectionColumns } from "./CollectionColumnsFactory.tsx";
 
 type Row = {
   id: string;
@@ -22,23 +20,23 @@ const rows: Row[] = [
   { id: "unknown-high", ownership: "Unknown", risk: "high" }
 ];
 
-const columns: ReportTableColumn<Row>[] = [
+const fields: ReportFieldDescriptor<Row>[] = [
   {
     id: "ownership",
     label: "Ownership",
-    getValue: (row) => row.ownership,
-    render: (row) => row.ownership
+    valueType: "text",
+    getValue: (row) => row.ownership
   },
   {
     id: "risk",
     label: "Permission risk",
-    getValue: (row) => row.risk,
-    render: (row) => row.risk
+    valueType: "riskLevel",
+    getValue: (row) => row.risk
   }
 ];
 
 test("applies multiple column value filters", () => {
-  const result = applyReportTableControls(rows, columns, {
+  const result = applyReportTableControls(rows, fields, {
     ownership: { type: "values", values: ["External", "Tenant owned"] },
     risk: { type: "values", values: ["low", "high"] }
   });
@@ -47,7 +45,7 @@ test("applies multiple column value filters", () => {
 });
 
 test("applies text column filters as regular expressions", () => {
-  const result = applyReportTableControls(rows, columns, {
+  const result = applyReportTableControls(rows, fields, {
     ownership: { type: "text", value: "^tenant\\s+owned$" }
   });
 
@@ -72,7 +70,7 @@ test("constructs filters from column value toggles", () => {
     risk: { type: "values", values: ["low", "high"] }
   });
 
-  expect(applyReportTableControls(rows, columns, constructedFilters).controlledRows.map((row) => row.id)).toEqual([
+  expect(applyReportTableControls(rows, fields, constructedFilters).controlledRows.map((row) => row.id)).toEqual([
     "external-low",
     "tenant-high",
     "tenant-low"
@@ -116,9 +114,7 @@ test("applies descriptor-backed ownership and permission risk filters through ta
       }
     }
   ];
-  const columns = buildCollectionColumns(fields);
-
-  const result = applyReportTableControls(rows, columns, {
+  const result = applyReportTableControls(rows, fields, {
     ownership: { type: "values", values: ["External", "Tenant owned"] },
     permissionRisk: { type: "values", values: ["low", "high"] }
   });

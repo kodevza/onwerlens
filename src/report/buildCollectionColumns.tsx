@@ -1,17 +1,25 @@
+import type { ReactNode } from "react";
+
 import type { ReportFieldDescriptor } from "./reportTypes";
 import type { ReportTableColumn } from "./components/reportTableControls";
 import { renderReportValue } from "./reportValueRenderers";
 
+export type ReportColumnRenderers<TRow> = Partial<Record<string, (row: TRow) => ReactNode>>;
+
 export function buildCollectionColumns<TRow>(
-  fields: ReportFieldDescriptor<TRow>[]
+  fields: ReportFieldDescriptor<TRow>[],
+  {
+    renderers = {}
+  }: {
+    renderers?: ReportColumnRenderers<TRow>;
+  } = {}
 ): ReportTableColumn<TRow>[] {
   return fields.map((field) => ({
     id: field.id,
     label: field.label,
     help: field.help,
     filter: getColumnFilterKind(field),
-    getValue: field.getValue,
-    render: (row) => renderReportValue(field, row)
+    render: renderers[field.id] ?? ((row) => renderReportValue(field, row))
   }));
 }
 

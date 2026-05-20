@@ -1,13 +1,11 @@
 import { useMemo, useState } from "react";
 
-import { applyCollectionFilters } from "./applyCollectionFilters";
-import { buildCollectionColumns } from "./buildCollectionColumns";
+import { applyCollectionControls } from "./applyCollectionControls";
 import { GenericTable } from "./components/GenericTable";
 import { OwnerOverview } from "./components/OwnerOverview";
 import { ReportDataSelection } from "./components/ReportDataSelection";
 import type { ReportCollectionTab } from "./components/ReportDataSelection";
 import { ReportInputs, type ReportInputsProps } from "./components/ReportInputs";
-import type { ReportTableColumn } from "./components/reportTableControls";
 import { downloadReportArtifact } from "./export/downloadReportArtifact";
 import { applyOwnerManualPrecheck, buildOwnerManualPrecheckExportArtifact } from "./ownerManualPrecheck";
 import type {
@@ -15,6 +13,7 @@ import type {
   ReportCollectionUiDescriptor,
   ReportExportArtifact,
   ReportExportFormat,
+  ReportFieldDescriptor,
   ReportProvider
 } from "./reportTypes";
 import type { ProviderOverview } from "./reportProviderModule";
@@ -95,7 +94,7 @@ export function OwnerReportView<TContext>({
 }
 
 type GenericCollectionView<TRow> = {
-  columns: ReportTableColumn<TRow>[];
+  fields: ReportFieldDescriptor<TRow>[];
   getRowKey: (row: TRow) => string;
   rows: TRow[];
 };
@@ -120,14 +119,14 @@ function buildGenericReportTable<TContext>(
   query: string
 ): GenericReportTable {
   const fields = collection.fields(reportContext);
-  const rows = applyCollectionFilters(collection.getRows(reportContext), fields, { query });
+  const rows = applyCollectionControls(collection.getRows(reportContext), fields, { query }).controlledRows;
 
   return {
     key: `${providerId}:${collection.id}`,
     providerId,
     collectionId: collection.id,
     title: collection.title,
-    columns: buildCollectionColumns(fields),
+    fields,
     getRowKey: collection.getRowKey,
     rows
   };
@@ -180,7 +179,7 @@ function buildGenericCollectionViews(tables: GenericReportTable[]): Record<strin
 
   for (const table of tables) {
     views[table.collectionId] = {
-      columns: table.columns,
+      fields: table.fields,
       getRowKey: table.getRowKey,
       rows: table.rows
     };
@@ -201,8 +200,8 @@ function renderGenericCollectionTable(
 
   return (
     <GenericTable
-      columns={view.columns}
       emptyMessage={collection.table.emptyMessage}
+      fields={view.fields}
       getRowKey={view.getRowKey}
       minWidthClassName={collection.table.minWidthClassName}
       rows={view.rows}
