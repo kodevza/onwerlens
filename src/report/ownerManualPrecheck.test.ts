@@ -1,5 +1,6 @@
 import {
   applyOwnerManualPrecheck,
+  buildOwnerManualPrecheckExportArtifact,
   buildOwnerManualPrecheckExport,
   disableOwnerCandidate,
   enableOwnerCandidate,
@@ -76,6 +77,31 @@ test("export keeps disabled activity evidence while omitting it from owner selec
   });
 });
 
+test("owner manual precheck export artifact builds csv rows from report layer", () => {
+  const row = ownerRow([["alice@example.com", "2026-05-01T10:00:00.000Z"]]);
+  const disabledKeys = disableOwnerCandidate(new Set(), getOwnerEvidenceKey(row, row.evidence[0]));
+  const report = applyOwnerManualPrecheck(ownerReport([row]), disabledKeys);
+
+  const artifact = buildOwnerManualPrecheckExportArtifact(report, "csv", "owners");
+
+  expect(artifact).toEqual({
+    kind: "csv",
+    fileName: "owners.csv",
+    rows: [
+      {
+        kind: "resourceGroup",
+        subscriptionId: "sub-1",
+        subscriptionName: "Subscription One",
+        resourceGroup: "rg-one",
+        owner: null,
+        confidence: "none",
+        source: "activity.lastModifier",
+        evidence: "alice@example.com (2026-05-01T10:00:00.000Z) [disabled]"
+      }
+    ]
+  });
+});
+
 test("manual precheck can re-enable disabled owner candidates", () => {
   const row = ownerRow([["alice@example.com", "2026-05-01T10:00:00.000Z"]]);
   const key = getOwnerEvidenceKey(row, row.evidence[0]);
@@ -89,20 +115,13 @@ test("manual precheck can re-enable disabled owner candidates", () => {
 
 function ownerReport(owners: OwnerReportRow[]): OwnerReport {
   return {
-    meta: {
-      activityLogCount: 0,
-      entraSnapshotCreatedAt: null,
-      resourceGroupCount: 0,
-      resourceSnapshotCreatedAt: null,
-      servicePrincipalCount: 0,
-      subscriptionCount: 0
-    },
     owners
   };
 }
 
 function ownerRow(evidence: Array<[string, string]>): OwnerReportRow {
   return {
+    targetKey: "resourceGroup:sub-1:rg-one",
     kind: "resourceGroup",
     subscriptionId: "sub-1",
     subscriptionName: "Subscription One",

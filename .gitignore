@@ -6,3 +6,5 @@ output/
 data/*snapshot.json
 .tmp
 src.zip
+dependency-graph.svg
+*.changes

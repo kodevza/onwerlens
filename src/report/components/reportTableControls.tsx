@@ -1,45 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { Input } from "../../components/ui/input";
-import { TableHead } from "../../components/ui/table";
-import { hasSearchExpression, matchesSearchExpression } from "../searchFilterUtils";
+import { Input } from "./ui/input";
+import { TableHead } from "./ui/table";
+import type { ReportColumnHelp, ReportFieldDescriptor } from "../reportTypes";
+import {
+  applyCollectionControls,
+  type ColumnFilter,
+  type ColumnFilterOptions,
+  type ColumnFilters,
+  type SortRule
+} from "../applyCollectionControls";
 
-export type SortDirection = "asc" | "desc";
-
-export type SortRule = {
-  columnId: string;
-  direction: SortDirection;
-};
+export type { ColumnFilter, ColumnFilterOptions, ColumnFilters, SortDirection, SortRule } from "../applyCollectionControls";
 
 export type ReportTableColumn<TRow> = {
   id: string;
   label: string;
   className?: string;
   filter?: "auto" | "text" | "multiselect";
-  help?: ReportTableColumnHelp;
-  getValue: (row: TRow) => unknown;
+  help?: ReportColumnHelp;
   render: (row: TRow) => ReactNode;
 };
-
-export type ReportTableColumnHelp = {
-  source: string;
-  field?: string;
-  logic?: string[];
-};
-
-type ColumnFilter =
-  | {
-      type: "text";
-      value: string;
-    }
-  | {
-      type: "values";
-      values: string[];
-    };
-
-type ColumnFilters = Record<string, ColumnFilter>;
-type ColumnFilterOptions = Record<string, string[]>;
 
 const maxMultiselectOptions = 5;
 const tooltipWidth = 320;
@@ -48,19 +30,14 @@ const dropdownGap = 4;
 const dropdownEstimatedHeight = 272;
 const viewportMargin = 16;
 
-const collator = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base"
-});
-
-export function useReportTableControls<TRow>(rows: TRow[], columns: ReportTableColumn<TRow>[]) {
+export function useReportTableControls<TRow>(rows: TRow[], fields: ReportFieldDescriptor<TRow>[]) {
   const [filters, setFilters] = useState<ColumnFilters>({});
   const [sortRules, setSortRules] = useState<SortRule[]>([]);
   const [openFilterColumnId, setOpenFilterColumnId] = useState<string | null>(null);
 
   const { controlledRows, filterOptions } = useMemo(
-    () => applyReportTableControls(rows, columns, filters, sortRules),
-    [columns, filters, rows, sortRules]
+    () => applyReportTableControls(rows, fields, filters, sortRules),
+    [fields, filters, rows, sortRules]
   );
 
   function setColumnFilter(columnId: string, value: string) {
@@ -121,64 +98,14 @@ export function useReportTableControls<TRow>(rows: TRow[], columns: ReportTableC
 
 export function applyReportTableControls<TRow>(
   rows: TRow[],
-  columns: ReportTableColumn<TRow>[],
+  fields: ReportFieldDescriptor<TRow>[],
   filters: ColumnFilters,
   sortRules: SortRule[] = []
 ) {
-  const filterOptions = buildFilterOptions(rows, columns);
-  const activeFilters = columns
-    .map((column) => ({
-      column,
-      filter: filters[column.id]
-    }))
-    .filter(({ filter }) => isActiveFilter(filter));
-
-  const columnById = new Map(columns.map((column) => [column.id, column]));
-  const filteredRows =
-    activeFilters.length === 0
-      ? rows
-      : rows.filter((row) =>
-          activeFilters.every(({ column, filter }) => {
-            const value = formatCellValue(column.getValue(row));
-
-            if (filter?.type === "values") {
-              return filter.values.includes(value);
-            }
-
-            return matchesSearchExpression(value, filter?.value ?? "");
-          })
-        );
-
-  logReportTableFilterDebug(rows, filteredRows, activeFilters, columns, filters);
-
-  if (sortRules.length === 0) {
-    return {
-      controlledRows: filteredRows,
-      filterOptions
-    };
-  }
-
-  return {
-    controlledRows: filteredRows
-      .map((row, index) => ({ row, index }))
-      .sort((left, right) => {
-        for (const rule of sortRules) {
-          const column = columnById.get(rule.columnId);
-          if (!column) {
-            continue;
-          }
-
-          const result = compareValues(column.getValue(left.row), column.getValue(right.row));
-          if (result !== 0) {
-            return rule.direction === "asc" ? result : -result;
-          }
-        }
-
-        return left.index - right.index;
-      })
-      .map(({ row }) => row),
-    filterOptions
-  };
+  return applyCollectionControls(rows, fields, {
+    filters,
+    sortRules
+  });
 }
 
 export function applyColumnValuesFilter(
@@ -309,7 +236,7 @@ export function ReportTableHead<TRow>({
   );
 }
 
-function ColumnInfo({ label, help }: { label: string; help: ReportTableColumnHelp }) {
+function ColumnInfo({ label, help }: { label: string; help: ReportColumnHelp }) {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
 
@@ -364,7 +291,7 @@ function ColumnInfoTooltip({
   top
 }: {
   label: string;
-  help: ReportTableColumnHelp;
+  help: ReportColumnHelp;
   left: number;
   top: number;
 }) {
@@ -521,131 +448,5 @@ function ColumnValueFilter<TRow>({
           )
         : null}
     </div>
-  );
-}
-
-function buildFilterOptions<TRow>(rows: TRow[], columns: ReportTableColumn<TRow>[]): ColumnFilterOptions {
-  return Object.fromEntries(
-    columns.map((column) => {
-      const values = new Set<string>();
-
-      for (const row of rows) {
-        const value = formatCellValue(column.getValue(row));
-
-        if (value.length > 0) {
-          values.add(value);
-        }
-
-        if (column.filter !== "multiselect" && values.size > maxMultiselectOptions) {
-          break;
-        }
-      }
-
-      return [column.id, [...values].sort((left, right) => collator.compare(left, right))];
-    })
-  );
-}
-
-function isActiveFilter(filter: ColumnFilter | undefined): boolean {
-  if (!filter) {
-    return false;
-  }
-
-  if (filter.type === "values") {
-    return filter.values.length > 0;
-  }
-
-  return hasSearchExpression(filter.value);
-}
-
-function compareValues(left: unknown, right: unknown): number {
-  const leftText = formatCellValue(left);
-  const rightText = formatCellValue(right);
-
-  if (!leftText && !rightText) {
-    return 0;
-  }
-
-  if (!leftText) {
-    return 1;
-  }
-
-  if (!rightText) {
-    return -1;
-  }
-
-  return collator.compare(leftText, rightText);
-}
-
-function formatCellValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") {
-    return "";
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(formatCellValue).filter(Boolean).join(", ");
-  }
-
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-
-  return String(value);
-}
-
-function logReportTableFilterDebug<TRow>(
-  rows: TRow[],
-  filteredRows: TRow[],
-  activeFilters: {
-    column: ReportTableColumn<TRow>;
-    filter: ColumnFilter | undefined;
-  }[],
-  columns: ReportTableColumn<TRow>[],
-  filters: ColumnFilters
-): void {
-  if (!isReportTableFilterDebugEnabled()) {
-    return;
-  }
-
-  const activeColumnIds = new Set(activeFilters.map(({ column }) => column.id));
-  const debugColumns = columns.filter((column) => activeColumnIds.has(column.id));
-  const filteredRowSet = new Set(filteredRows);
-
-  console.groupCollapsed(
-    `[OwnerLens table filters] ${filteredRows.length}/${rows.length} rows after ${activeFilters.length} filters`
-  );
-  console.log("filters", filters);
-  console.log(
-    "activeFilters",
-    activeFilters.map(({ column, filter }) => ({
-      columnId: column.id,
-      label: column.label,
-      filter
-    }))
-  );
-  console.table(
-    rows.map((row) => {
-      const rowRecord = row as Record<string, unknown>;
-      const debugRow: Record<string, unknown> = {
-        included: filteredRowSet.has(row),
-        id: rowRecord.id,
-        displayName: rowRecord.displayName,
-        appId: rowRecord.appId
-      };
-
-      for (const column of debugColumns) {
-        debugRow[column.id] = formatCellValue(column.getValue(row));
-      }
-
-      return debugRow;
-    })
-  );
-  console.groupEnd();
-}
-
-function isReportTableFilterDebugEnabled(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.localStorage.getItem("ownerLensDebugTableFilters") === "1"
   );
 }

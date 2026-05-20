@@ -1,32 +1,26 @@
 import {
+  buildEntraConsentInventoryExport,
   buildManagedIdentityExport,
-  buildServicePrincipalExport,
-  filterOwners,
+  buildServicePrincipalExport
+} from "./azureReportUtils.ts";
+import {
+  formatServicePrincipalEntraOwners,
   formatManagedIdentityPotentialOwners,
-  formatManagedIdentityResourceGroups
-} from "./reportViewUtils.ts";
-import type { EntraServicePrincipal, EntraSnapshot } from "../providers/azure/domain/entra";
-import type { AzureSnapshot } from "../providers/azure/domain/resources";
-import { buildAzureAccessRiskIndex, buildManagedIdentityAssignmentIndex, buildRoleAssignmentIndex } from "../providers/azure";
-import type { OwnerReportRow } from "./types.ts";
-
-const ownerRows: OwnerReportRow[] = [
-  ownerRow("Subscription Alpha", "alice@example.com"),
-  ownerRow("Subscription Beta", "bob@example.com"),
-  ownerRow("Production Shared", "carol@example.com")
-];
-
-test("applies active table filters as regular expressions", () => {
-  expect(filterOwners(ownerRows, "^subscription\\s+(alpha|beta)$").map((row) => row.subscriptionName)).toEqual([
-    "Subscription Alpha",
-    "Subscription Beta"
-  ]);
-});
+  formatManagedIdentityResourceGroups,
+  formatServicePrincipalPotentialOwner,
+  formatServicePrincipalPotentialOwnerConfidence
+} from "./reportConfig/azureReportFormatters.ts";
+import type { EntraServicePrincipal, EntraSnapshot } from "./domain/entra";
+import type { AzureSnapshot } from "./domain/resources";
+import { buildAzureAccessRiskIndex } from "./access-risk";
+import { buildAzureManagedIdentityAssignmentIndex, buildRoleAssignmentIndex } from "./identities";
+import type { OwnerReportRow } from "./ownership/azureOwnerReportTypes.ts";
+import type { EntraConsentInventoryRow } from "./entra-consent";
 
 test("projects managed identity owner from its resource group", () => {
   const servicePrincipal = managedIdentity("principal-a", "client-a");
   const resourceSnapshot = azureSnapshot();
-  const assignmentIndex = buildManagedIdentityAssignmentIndex(resourceSnapshot);
+  const assignmentIndex = buildAzureManagedIdentityAssignmentIndex(resourceSnapshot);
   const owners: OwnerReportRow[] = [
     resourceGroupOwnerRow("sub-1", "Subscription One", "rg-identity", "identity-team@example.com", [
       ["identity-team@example.com", false],
@@ -50,7 +44,7 @@ test("projects managed identity owner from its resource group", () => {
 test("exports managed identity rows with projected ownership and RBAC fields", () => {
   const servicePrincipal = managedIdentity("principal-a", "client-a");
   const resourceSnapshot = azureSnapshot();
-  const assignmentIndex = buildManagedIdentityAssignmentIndex(resourceSnapshot);
+  const assignmentIndex = buildAzureManagedIdentityAssignmentIndex(resourceSnapshot);
   const permissionRiskIndex = buildAzureAccessRiskIndex(resourceSnapshot);
   const owners: OwnerReportRow[] = [
     resourceGroupOwnerRow("sub-1", "Subscription One", "rg-identity", "identity-team@example.com")
@@ -104,12 +98,16 @@ test("exports service principal rows with ownership and Azure RBAC fields", () =
     entraSnapshot(),
     buildRoleAssignmentIndex(resourceSnapshot),
     buildAzureAccessRiskIndex(resourceSnapshot),
+    [resourceGroupOwnerRow("sub-1", "Subscription One", "rg-app", "platform-team@example.com")],
     reportMeta()
   );
 
   expect(exportable.servicePrincipals[0]).toMatchObject({
     displayName: "app-sp",
     ownership: "Tenant owned",
+    servicePrincipalOwners: "-",
+    potentialOwner: "platform-team@example.com",
+    ownerConfidence: "low",
     permissionRisk: "low",
     azureRbac: "Reader on rg/rg-app (read-only role)",
     type: "Application",
@@ -119,18 +117,100 @@ test("exports service principal rows with ownership and Azure RBAC fields", () =
   });
 });
 
-function ownerRow(subscriptionName: string, owner: string): OwnerReportRow {
-  return {
-    kind: "subscription",
-    subscriptionId: subscriptionName.toLowerCase().replace(/\s+/g, "-"),
-    subscriptionName,
-    resourceGroup: null,
-    owner,
-    confidence: "high",
-    source: "activityLog",
-    evidence: []
+test("resolves service principal potential owner confidence by evidence source", () => {
+  const explicitOwner = applicationServicePrincipal("explicit-sp", "explicit-client");
+  explicitOwner.tags = ["owner=metadata-team@example.com"];
+  const entraOwner = applicationServicePrincipal("entra-sp", "entra-client");
+  entraOwner.servicePrincipalOwners = [{ userPrincipalName: "entra-owner@example.com" }];
+  const rbacOwner = applicationServicePrincipal("rbac-sp", "rbac-client");
+  const resourceSnapshot = azureSnapshot();
+  resourceSnapshot.roleAssignments = [
+    {
+      subscriptionId: "sub-1",
+      subscriptionName: "Subscription One",
+      roleAssignmentId: "role-assignment-1",
+      scope: "/subscriptions/sub-1/resourceGroups/rg-app",
+      scopeType: "ResourceGroup",
+      scopeSubscriptionId: "sub-1",
+      scopeResourceGroup: "rg-app",
+      scopeResourceProvider: null,
+      scopeResourceType: null,
+      scopeResourceName: null,
+      scopeManagementGroup: null,
+      principalId: "rbac-sp",
+      principalType: "ServicePrincipal",
+      principalDisplayName: "rbac-sp",
+      signInName: null,
+      roleDefinitionId: "reader-role",
+      roleDefinitionName: "Reader",
+      canDelegate: null,
+      condition: null,
+      conditionVersion: null
+    }
+  ];
+  const roleAssignmentIndex = buildRoleAssignmentIndex(resourceSnapshot);
+  const owners: OwnerReportRow[] = [
+    resourceGroupOwnerRow("sub-1", "Subscription One", "rg-app", "platform-team@example.com")
+  ];
+
+  expect(formatServicePrincipalPotentialOwner(explicitOwner, roleAssignmentIndex, owners)).toBe(
+    "metadata-team@example.com"
+  );
+  expect(formatServicePrincipalPotentialOwnerConfidence(explicitOwner, roleAssignmentIndex, owners)).toBe("high");
+  expect(formatServicePrincipalPotentialOwner(entraOwner, roleAssignmentIndex, owners)).toBe(
+    "entra-owner@example.com"
+  );
+  expect(formatServicePrincipalPotentialOwnerConfidence(entraOwner, roleAssignmentIndex, owners)).toBe("medium");
+  expect(formatServicePrincipalPotentialOwner(rbacOwner, roleAssignmentIndex, owners)).toBe(
+    "platform-team@example.com"
+  );
+  expect(formatServicePrincipalPotentialOwnerConfidence(rbacOwner, roleAssignmentIndex, owners)).toBe("low");
+});
+
+test("formats captured service principal owners", () => {
+  const servicePrincipal = applicationServicePrincipal("owned-sp", "owned-client");
+  servicePrincipal.servicePrincipalOwners = [
+    { displayName: "Display Owner", userPrincipalName: "display@example.com" },
+    { displayName: "Mail Owner", mail: "mail@example.com" }
+  ];
+
+  expect(formatServicePrincipalEntraOwners(servicePrincipal)).toBe("display@example.com, mail@example.com");
+});
+
+test("exports consent inventory rows with service principal potential owner", () => {
+  const servicePrincipal = applicationServicePrincipal("consent-sp", "consent-client");
+  servicePrincipal.servicePrincipalOwners = [{ userPrincipalName: "consent-owner@example.com" }];
+  const row: EntraConsentInventoryRow = {
+    key: "consent-sp::graph::AllPrincipals",
+    servicePrincipal,
+    owner: "Tenant owned",
+    resourceApi: "Microsoft Graph",
+    resourceServicePrincipalId: "graph-sp",
+    consentType: "AllPrincipals",
+    delegatedScopes: ["User.Read"],
+    broadDelegatedScopes: [],
+    oauth2PermissionGrants: [],
+    applicationPermissions: [],
+    appRoleAssignments: [],
+    riskLevel: "medium",
+    reasons: ["delegated OAuth grant"]
   };
-}
+
+  const exportable = buildEntraConsentInventoryExport(
+    [row],
+    buildRoleAssignmentIndex(azureSnapshot()),
+    [],
+    reportMeta()
+  );
+
+  expect(exportable.entraConsentInventory[0]).toMatchObject({
+    identity: "app-sp",
+    owner: "Tenant owned",
+    potentialOwner: "consent-owner@example.com",
+    ownerConfidence: "medium",
+    resourceApi: "Microsoft Graph"
+  });
+});
 
 function resourceGroupOwnerRow(
   subscriptionId: string,
@@ -140,6 +220,7 @@ function resourceGroupOwnerRow(
   evidence: Array<[string, boolean]> = [[owner, false]]
 ): OwnerReportRow {
   return {
+    targetKey: `resourceGroup:${subscriptionId.toLowerCase()}:${resourceGroup.toLowerCase()}`,
     kind: "resourceGroup",
     subscriptionId,
     subscriptionName,

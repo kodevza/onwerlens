@@ -1,76 +1,58 @@
 import type { ReactNode } from "react";
 import { ChevronDown, Download } from "lucide-react";
 
-import { Card, CardContent } from "../../components/ui/card";
+import { Card, CardContent } from "./ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
-} from "../../components/ui/dropdown-menu";
-import { Input } from "../../components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
+} from "./ui/dropdown-menu";
+import { Input } from "./ui/input";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
-export type ReportTab = "owners" | "managedIdentities" | "servicePrincipals";
 export type ExportFormat = "json" | "csv";
 
+export type ReportCollectionTab<TId extends string = string> = {
+  id: TId;
+  label: string;
+  count: number;
+  exportLabel?: string;
+  onExport?: (format: ExportFormat) => void;
+};
+
 type ReportDataSelectionProps = {
-  activeTab: ReportTab;
+  activeTab: string;
   children: ReactNode;
-  managedIdentityCount: number;
-  onManagedIdentityExport?: (format: ExportFormat) => void;
+  collections: ReportCollectionTab[];
   onQueryChange: (query: string) => void;
-  onOwnerExport?: (format: ExportFormat) => void;
-  onServicePrincipalExport?: (format: ExportFormat) => void;
-  onTabChange: (tab: ReportTab) => void;
-  ownerCount: number;
+  onTabChange: (tab: string) => void;
   query: string;
-  servicePrincipalCount: number;
 };
 
 export function ReportDataSelection({
   activeTab,
   children,
-  managedIdentityCount,
-  onManagedIdentityExport,
-  onOwnerExport,
+  collections,
   onQueryChange,
-  onServicePrincipalExport,
   onTabChange,
-  ownerCount,
-  query,
-  servicePrincipalCount
+  query
 }: ReportDataSelectionProps) {
   return (
     <Card>
       <CardContent className="p-4 md:p-6">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <Tabs value={activeTab} onValueChange={(value) => onTabChange(value as ReportTab)}>
+          <Tabs value={activeTab} onValueChange={onTabChange}>
             <TabsList aria-label="Report sections">
-              <ReportTabTrigger count={ownerCount} tab="owners">
-                Owner Report
-              </ReportTabTrigger>
-              <ReportTabTrigger
-                count={managedIdentityCount}
-                tab="managedIdentities"
-              >
-                Managed Identities
-              </ReportTabTrigger>
-              <ReportTabTrigger
-                count={servicePrincipalCount}
-                tab="servicePrincipals"
-              >
-                Service Principals
-              </ReportTabTrigger>
+              {collections.map((collection) => (
+                <ReportTabTrigger key={collection.id} count={collection.count} tab={collection.id}>
+                  {collection.label}
+                </ReportTabTrigger>
+              ))}
             </TabsList>
           </Tabs>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <ReportExportButton
-              activeTab={activeTab}
-              onManagedIdentityExport={onManagedIdentityExport}
-              onOwnerExport={onOwnerExport}
-              onServicePrincipalExport={onServicePrincipalExport}
-            />
+            <ReportExportButton activeTab={activeTab} collections={collections} />
             <Input
               aria-label="Filter active table"
               className="lg:max-w-80"
@@ -88,21 +70,12 @@ export function ReportDataSelection({
 
 function ReportExportButton({
   activeTab,
-  onManagedIdentityExport,
-  onOwnerExport,
-  onServicePrincipalExport
+  collections
 }: {
-  activeTab: ReportTab;
-  onManagedIdentityExport?: (format: ExportFormat) => void;
-  onOwnerExport?: (format: ExportFormat) => void;
-  onServicePrincipalExport?: (format: ExportFormat) => void;
+  activeTab: string;
+  collections: ReportCollectionTab[];
 }) {
-  const exportConfig = getExportConfig(
-    activeTab,
-    onOwnerExport,
-    onManagedIdentityExport,
-    onServicePrincipalExport
-  );
+  const exportConfig = getExportConfig(activeTab, collections);
 
   if (!exportConfig) {
     return null;
@@ -129,21 +102,12 @@ function ReportExportButton({
 }
 
 function getExportConfig(
-  activeTab: ReportTab,
-  onOwnerExport?: (format: ExportFormat) => void,
-  onManagedIdentityExport?: (format: ExportFormat) => void,
-  onServicePrincipalExport?: (format: ExportFormat) => void
+  activeTab: string,
+  collections: ReportCollectionTab[]
 ): { label: string; onExport: (format: ExportFormat) => void } | null {
-  if (activeTab === "owners" && onOwnerExport) {
-    return { label: "Export owners", onExport: onOwnerExport };
-  }
-
-  if (activeTab === "managedIdentities" && onManagedIdentityExport) {
-    return { label: "Export MI", onExport: onManagedIdentityExport };
-  }
-
-  if (activeTab === "servicePrincipals" && onServicePrincipalExport) {
-    return { label: "Export SP", onExport: onServicePrincipalExport };
+  const collection = collections.find((entry) => entry.id === activeTab);
+  if (collection?.onExport && collection.exportLabel) {
+    return { label: collection.exportLabel, onExport: collection.onExport };
   }
 
   return null;
@@ -154,7 +118,7 @@ function ReportTabTrigger({
   count,
   children
 }: {
-  tab: ReportTab;
+  tab: string;
   count: number;
   children: string;
 }) {

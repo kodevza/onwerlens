@@ -1,5 +1,5 @@
 import {
-  buildManagedIdentityAssignmentIndex,
+  buildAzureManagedIdentityAssignmentIndex,
   getManagedIdentityAssignmentsForServicePrincipal,
   normalizeUserAssignedIdentityAssignments
 } from "./buildAzureManagedIdentityAssignmentIndex.ts";
@@ -36,7 +36,7 @@ test("normalizes user-assigned identity assignments", () => {
 });
 
 test("indexes user-assigned managed identity assignments", () => {
-  const index = buildManagedIdentityAssignmentIndex({
+  const index = buildAzureManagedIdentityAssignmentIndex({
     meta: {
       provider: "azure",
       snapshotVersion: "0.2",
@@ -106,7 +106,7 @@ test("indexes user-assigned managed identity assignments", () => {
 });
 
 test("indexes system-assigned managed identity assignments", () => {
-  const systemAssignedIndex = buildManagedIdentityAssignmentIndex({
+  const systemAssignedIndex = buildAzureManagedIdentityAssignmentIndex({
     meta: {
       provider: "azure",
       snapshotVersion: "0.2",

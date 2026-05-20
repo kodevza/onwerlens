@@ -1,3 +1,18 @@
+export type { OwnerConfidence, OwnerEvidence, OwnerResolution } from "../core/ownership/types";
+import type { OwnerResolution } from "../core/ownership/types";
+
+export type OwnerReportRow = OwnerResolution & {
+  kind: "subscription" | "resourceGroup";
+  resourceGroup: string | null;
+  subscriptionId: string;
+  subscriptionName: string;
+  targetKey: string;
+};
+
+export type OwnerReport = {
+  owners: OwnerReportRow[];
+};
+
 export type SnapshotFile = {
   name: string;
   size: number;
@@ -17,37 +32,3 @@ export type LoadState =
   | { status: "loading" }
   | { status: "ready" }
   | { status: "error"; message: string };
-
-export type OwnerConfidence = "high" | "medium" | "low" | "none";
-
-export type OwnerEvidence = {
-  user: string;
-  date: string | null;
-  disabled?: boolean;
-};
-
-export type OwnerResolution = {
-  owner: string | null;
-  confidence: OwnerConfidence;
-  source: string;
-  evidence: OwnerEvidence[];
-};
-
-export type OwnerReportRow = OwnerResolution & {
-  kind: "subscription" | "resourceGroup";
-  subscriptionId: string;
-  subscriptionName: string;
-  resourceGroup: string | null;
-};
-
-export type OwnerReport = {
-  meta: {
-    resourceSnapshotCreatedAt: string | null;
-    entraSnapshotCreatedAt: string | null;
-    subscriptionCount: number;
-    resourceGroupCount: number;
-    activityLogCount: number;
-    servicePrincipalCount: number;
-  };
-  owners: OwnerReportRow[];
-};

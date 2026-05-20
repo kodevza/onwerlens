@@ -1,6 +1,6 @@
-import { Card, CardContent } from "../../components/ui/card";
+import { Card, CardContent } from "./ui/card";
 
-type OwnerOverviewProps = {
+export type OwnerOverviewProps = {
   managedIdentityCount: number;
   ownedCount: number;
   ownerRowCount: number;

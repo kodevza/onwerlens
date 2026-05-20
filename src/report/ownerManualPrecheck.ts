@@ -1,13 +1,14 @@
+import type { ReportCsvRow, ReportExportArtifact, ReportExportFormat } from "./reportTypes";
 import type { OwnerEvidence, OwnerReport, OwnerReportRow } from "./types";
 
 export type DisabledOwnerKey = string;
 
-export function getOwnerRowKey(row: Pick<OwnerReportRow, "kind" | "subscriptionId" | "resourceGroup">): string {
-  return [row.kind, row.subscriptionId.toLowerCase(), (row.resourceGroup ?? "").toLowerCase()].join(":");
+export function getOwnerRowKey(row: Pick<OwnerReportRow, "targetKey">): string {
+  return row.targetKey;
 }
 
 export function getOwnerEvidenceKey(
-  row: Pick<OwnerReportRow, "kind" | "subscriptionId" | "resourceGroup">,
+  row: Pick<OwnerReportRow, "targetKey">,
   evidence: Pick<OwnerEvidence, "user" | "date">
 ): DisabledOwnerKey {
   return [getOwnerRowKey(row), normalizeEvidencePart(evidence.user), evidence.date ?? ""].join(":");
@@ -54,6 +55,28 @@ export function buildOwnerManualPrecheckExport(report: OwnerReport): OwnerReport
   };
 }
 
+export function buildOwnerManualPrecheckExportArtifact(
+  report: OwnerReport,
+  format: ReportExportFormat,
+  fileBaseName: string
+): ReportExportArtifact {
+  const exportableReport = buildOwnerManualPrecheckExport(report);
+
+  if (format === "csv") {
+    return {
+      kind: "csv",
+      fileName: `${fileBaseName}.csv`,
+      rows: buildOwnerCsvRows(exportableReport.owners)
+    };
+  }
+
+  return {
+    kind: "json",
+    fileName: `${fileBaseName}.json`,
+    data: exportableReport
+  };
+}
+
 function applyOwnerManualPrecheckToRow(
   row: OwnerReportRow,
   disabledKeys: ReadonlySet<DisabledOwnerKey>
@@ -91,4 +114,19 @@ function normalizeEvidencePart(value: string): string {
 
 function isDefaultDisabledOwnerEvidence(evidence: Pick<OwnerEvidence, "user">): boolean {
   return !evidence.user.includes("@");
+}
+
+function buildOwnerCsvRows(rows: OwnerReportRow[]): ReportCsvRow[] {
+  return rows.map((row) => ({
+    kind: row.kind,
+    subscriptionId: row.subscriptionId,
+    subscriptionName: row.subscriptionName,
+    resourceGroup: row.resourceGroup,
+    owner: row.owner,
+    confidence: row.confidence,
+    source: row.source,
+    evidence: row.evidence
+      .map((entry) => `${entry.user}${entry.date ? ` (${entry.date})` : ""}${entry.disabled ? " [disabled]" : ""}`)
+      .join("; ")
+  }));
 }

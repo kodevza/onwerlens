@@ -1,4 +1,14 @@
+import type { EntraAppRole } from "./EntraAppRole";
+
 export type EntraServicePrincipalType = "Application" | "ManagedIdentity" | "SocialIdp" | "Legacy";
+
+export type EntraOwner = {
+  id?: string | null;
+  displayName?: string | null;
+  userPrincipalName?: string | null;
+  mail?: string | null;
+  ownerType?: string | null;
+};
 
 export type EntraServicePrincipal = {
   id: string;
@@ -14,4 +24,10 @@ export type EntraServicePrincipal = {
   replyUrls: string[];
   servicePrincipalNames: string[];
   tags: string[];
+  appRoles?: EntraAppRole[];
+  owners?: EntraOwner[];
+  appOwners?: EntraOwner[];
+  servicePrincipalOwners?: EntraOwner[];
+  applicationOwners?: EntraOwner[];
+  metadata?: Record<string, unknown> | null;
 };

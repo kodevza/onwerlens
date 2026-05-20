@@ -1,8 +1,8 @@
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { formatBytes, formatDate } from "../reportUtils";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { formatBytes, formatDate } from "../../lib/utils";
 import type { SnapshotFile } from "../types";
 
-type ReportInputsProps = {
+export type ReportInputsProps = {
   activityLogCount: number;
   entraFile?: SnapshotFile;
   entraSnapshotCreatedAt?: string | null;

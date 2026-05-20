@@ -1,5 +1,5 @@
 import type { AzureActivityLog, AzureResourceGroup, AzureResourceTags } from "../domain/resources";
-import type { OwnerEvidence, OwnerResolution } from "../../../report/types";
+import type { OwnerEvidence, OwnerResolution } from "../../../core/ownership/types";
 import {
   compareLogsNewestFirst,
   describeIdentity,

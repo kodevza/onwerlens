@@ -1,6 +1,7 @@
 import type { EntraSnapshot, EntraServicePrincipal } from "../domain/entra";
 import type { AzureActivityLog, AzureResourceGroup, AzureSnapshot, AzureSubscription } from "../domain/resources";
-import type { OwnerResolution } from "../../../report/types";
+import type { OwnerResolver } from "../../../core/ownership/resolveOwner";
+import type { OwnerResolution } from "../../../core/ownership/types";
 
 export type OwnerTarget =
   | {
@@ -20,9 +21,7 @@ export type OwnerResolverContext = {
   servicePrincipalIndex: Map<string, EntraServicePrincipal>;
 };
 
-export type OwnerResolverAdapter = {
-  resolveOwner(target: OwnerTarget, context: OwnerResolverContext): OwnerResolution;
-};
+export type OwnerResolverAdapter = OwnerResolver<OwnerTarget, OwnerResolverContext>;
 
 export type AzureOwnerTargetConfig = {
   kind: OwnerTarget["kind"];
