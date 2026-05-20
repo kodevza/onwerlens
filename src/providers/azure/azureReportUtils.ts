@@ -21,7 +21,6 @@ import {
 } from "./reportConfig/azureReportFormatters";
 import type { PermissionRiskLevel } from "../../core/risk/types";
 import { formatValue } from "../../lib/utils";
-import { hasSearchExpression, matchesSearchExpression } from "../../lib/searchFilterUtils";
 
 export { isManagedIdentity, isTenantOwned, formatServicePrincipalOwnership };
 
@@ -99,59 +98,6 @@ export function sortServicePrincipals(servicePrincipals: EntraServicePrincipal[]
   return [...servicePrincipals].sort((left, right) =>
     left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" })
   );
-}
-
-export function filterManagedIdentities(
-  servicePrincipals: EntraServicePrincipal[],
-  query: string,
-  assignmentIndex: ManagedIdentityAssignmentIndex,
-  permissionRiskIndex: ManagedIdentityPermissionRiskIndex,
-  resourceSnapshot: AzureSnapshot,
-  ownerRows: OwnerReportRow[]
-): EntraServicePrincipal[] {
-  if (!hasSearchExpression(query)) {
-    return servicePrincipals;
-  }
-
-  return servicePrincipals.filter((sp) =>
-    matchesSearchExpression(
-      buildManagedIdentitySearchText(sp, assignmentIndex, permissionRiskIndex, resourceSnapshot, ownerRows),
-      query
-    )
-  );
-}
-
-export function filterServicePrincipals(
-  servicePrincipals: EntraServicePrincipal[],
-  query: string,
-  entraSnapshot: EntraSnapshot,
-  roleAssignmentIndex: RoleAssignmentIndex,
-  permissionRiskIndex: ManagedIdentityPermissionRiskIndex,
-  ownerRows: OwnerReportRow[]
-): EntraServicePrincipal[] {
-  if (!hasSearchExpression(query)) {
-    return servicePrincipals;
-  }
-
-  return servicePrincipals.filter((sp) =>
-    matchesSearchExpression(
-      buildServicePrincipalSearchText(sp, entraSnapshot, roleAssignmentIndex, permissionRiskIndex, ownerRows),
-      query
-    )
-  );
-}
-
-export function filterEntraConsentInventory(
-  rows: EntraConsentInventoryRow[],
-  query: string,
-  roleAssignmentIndex: RoleAssignmentIndex,
-  ownerRows: OwnerReportRow[]
-): EntraConsentInventoryRow[] {
-  if (!hasSearchExpression(query)) {
-    return rows;
-  }
-
-  return rows.filter((row) => matchesSearchExpression(buildEntraConsentInventorySearchText(row, roleAssignmentIndex, ownerRows), query));
 }
 
 export function buildManagedIdentityExport(
@@ -259,85 +205,4 @@ export function buildEntraConsentInventoryExport(
       objectId: row.servicePrincipal.id
     }))
   };
-}
-
-function buildManagedIdentitySearchText(
-  servicePrincipal: EntraServicePrincipal,
-  assignmentIndex: ManagedIdentityAssignmentIndex,
-  permissionRiskIndex: ManagedIdentityPermissionRiskIndex,
-  resourceSnapshot: AzureSnapshot,
-  ownerRows: OwnerReportRow[]
-): string {
-  const permissionRisk = getManagedIdentityPermissionRiskForServicePrincipal(servicePrincipal, permissionRiskIndex);
-
-  return buildSearchText([
-    servicePrincipal.displayName,
-    formatManagedIdentityResourceGroups(servicePrincipal, assignmentIndex, resourceSnapshot, ownerRows),
-    formatManagedIdentityPotentialOwners(servicePrincipal, assignmentIndex, resourceSnapshot, ownerRows),
-    formatManagedIdentityAssignments(servicePrincipal, assignmentIndex),
-    permissionRisk.riskLevel,
-    formatManagedIdentityPermissionRisk(permissionRisk),
-    formatBoolean(servicePrincipal.accountEnabled),
-    servicePrincipal.id,
-    servicePrincipal.appId,
-    servicePrincipal.appDisplayName,
-    servicePrincipal.publisherName,
-    formatList(servicePrincipal.servicePrincipalNames),
-    formatList(servicePrincipal.tags)
-  ]);
-}
-
-function buildServicePrincipalSearchText(
-  servicePrincipal: EntraServicePrincipal,
-  entraSnapshot: EntraSnapshot,
-  roleAssignmentIndex: RoleAssignmentIndex,
-  permissionRiskIndex: ManagedIdentityPermissionRiskIndex,
-  ownerRows: OwnerReportRow[]
-): string {
-  const permissionRisk = getManagedIdentityPermissionRiskForServicePrincipal(servicePrincipal, permissionRiskIndex);
-
-  return buildSearchText([
-    servicePrincipal.displayName,
-    formatServicePrincipalOwnership(servicePrincipal, entraSnapshot),
-    formatServicePrincipalEntraOwners(servicePrincipal),
-    formatServicePrincipalPotentialOwner(servicePrincipal, roleAssignmentIndex, ownerRows),
-    formatServicePrincipalPotentialOwnerConfidence(servicePrincipal, roleAssignmentIndex, ownerRows),
-    permissionRisk.riskLevel,
-    formatManagedIdentityPermissionRisk(permissionRisk),
-    formatRoleAssignments(servicePrincipal, roleAssignmentIndex),
-    servicePrincipal.servicePrincipalType,
-    formatBoolean(servicePrincipal.accountEnabled),
-    servicePrincipal.id,
-    servicePrincipal.appId,
-    servicePrincipal.appDisplayName,
-    servicePrincipal.publisherName,
-    servicePrincipal.homepage,
-    formatList(servicePrincipal.replyUrls),
-    formatList(servicePrincipal.tags)
-  ]);
-}
-
-function buildEntraConsentInventorySearchText(
-  row: EntraConsentInventoryRow,
-  roleAssignmentIndex: RoleAssignmentIndex,
-  ownerRows: OwnerReportRow[]
-): string {
-  return buildSearchText([
-    row.servicePrincipal.displayName,
-    row.servicePrincipal.appId,
-    row.servicePrincipal.id,
-    row.owner,
-    formatServicePrincipalPotentialOwner(row.servicePrincipal, roleAssignmentIndex, ownerRows),
-    formatServicePrincipalPotentialOwnerConfidence(row.servicePrincipal, roleAssignmentIndex, ownerRows),
-    row.resourceApi,
-    row.consentType,
-    row.delegatedScopes,
-    row.applicationPermissions,
-    row.riskLevel,
-    row.reasons
-  ]);
-}
-
-function buildSearchText(values: unknown[]): string {
-  return values.map(formatValue).join("\n").toLowerCase();
 }
