@@ -12,6 +12,15 @@ The application is intended to reconcile cloud provider ownership data
 The app runs locally with Vite. Snapshot file (exported by ./tools/* scripts) stay on your machine and are read
 from the repository `data` directory by the development server.
 
+flowchart TD
+    A["1. Entra + Azure Resource Snapshot<br/><br/>Service Principals<br/>Managed Identities<br/>Groups<br/>Role Assignments<br/>Tags<br/>Activity Logs"]
+
+    B["2. OwnerLens Review UI<br/><br/>Resolve likely owners<br/>Show confidence<br/>Show evidence<br/>Find ownership gaps<br/>Manual review & cleanup"]
+
+    C["3. Export to IAM / Recertification<br/><br/>CSV / JSON<br/>Owner mapping<br/>Gap report<br/>Input for SailPoint / Saviynt / Omada / Entra Governance"]
+
+    A --> B --> C
+    
 ## Features
 
 - Resolve owners from configurable Azure tags such as `ownerGroup`,
